@@ -339,7 +339,30 @@ def main():
 
     m = build_map(features, cb_icon_uri)
     m.save(str(DEFAULT_OUTPUT_FILE))
-    print(f"Map saved to {DEFAULT_OUTPUT_FILE}")
+    
+    # Add auto-refresh to the HTML file
+    with open(DEFAULT_OUTPUT_FILE, "r", encoding="utf-8") as f:
+        html_content = f.read()
+    
+    # Inject meta refresh and JavaScript for auto-reload every 16 minutes (960000 ms)
+    # This ensures the browser fetches the updated map after GitHub Actions runs every 15 minutes
+    auto_refresh_code = '''
+    <meta http-equiv="refresh" content="960">
+    <script>
+        // Auto-refresh every 16 minutes to get updated data
+        setTimeout(function() {
+            location.reload();
+        }, 960000);
+    </script>
+'''
+    
+    # Insert the auto-refresh code in the <head> section
+    html_content = html_content.replace('</head>', auto_refresh_code + '</head>')
+    
+    with open(DEFAULT_OUTPUT_FILE, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    
+    print(f"Map saved to {DEFAULT_OUTPUT_FILE} with auto-refresh enabled")
 
 
 if __name__ == "__main__":
