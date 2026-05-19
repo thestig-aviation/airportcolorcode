@@ -203,6 +203,60 @@ def parse_conditions(feature):
 def build_map(features, cb_icon_uri):
     m = folium.Map(location=[65, 15], zoom_start=4)
 
+    # Add legend to the map
+    legend_html = '''
+    <div style="position: fixed; 
+                top: 10px; 
+                right: 10px; 
+                width: 280px; 
+                background-color: white; 
+                border: 2px solid #888; 
+                border-radius: 5px; 
+                padding: 10px; 
+                font-family: Arial, sans-serif; 
+                font-size: 12px; 
+                box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                z-index: 9999;">
+        <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">Color State Criteria</h4>
+        <div style="display: flex; align-items: center; margin: 4px 0;">
+            <div style="width: 20px; height: 20px; background-color: #FF0000; border: 1px solid #333; margin-right: 8px;"></div>
+            <span><strong>RED:</strong> &lt;200 ft or &lt;0.8 km</span>
+        </div>
+        <div style="display: flex; align-items: center; margin: 4px 0;">
+            <div style="width: 20px; height: 20px; background-color: #FF8000; border: 1px solid #333; margin-right: 8px;"></div>
+            <span><strong>AMB:</strong> &lt;300 ft or &lt;1.6 km</span>
+        </div>
+        <div style="display: flex; align-items: center; margin: 4px 0;">
+            <div style="width: 20px; height: 20px; background-color: #FFC000; border: 1px solid #333; margin-right: 8px;"></div>
+            <span><strong>YLO2:</strong> &lt;500 ft or &lt;2.5 km</span>
+        </div>
+        <div style="display: flex; align-items: center; margin: 4px 0;">
+            <div style="width: 20px; height: 20px; background-color: #FFF200; border: 1px solid #333; margin-right: 8px;"></div>
+            <span><strong>YLO1:</strong> &lt;700 ft or &lt;3.7 km</span>
+        </div>
+        <div style="display: flex; align-items: center; margin: 4px 0;">
+            <div style="width: 20px; height: 20px; background-color: #00A000; border: 1px solid #333; margin-right: 8px;"></div>
+            <span><strong>GRN:</strong> &lt;1500 ft or &lt;5 km</span>
+        </div>
+        <div style="display: flex; align-items: center; margin: 4px 0;">
+            <div style="width: 20px; height: 20px; background-color: #FFFFFF; border: 1px solid #333; margin-right: 8px;"></div>
+            <span><strong>WHT:</strong> &lt;2500 ft or &lt;8 km</span>
+        </div>
+        <div style="display: flex; align-items: center; margin: 4px 0;">
+            <div style="width: 20px; height: 20px; background-color: #0000FF; border: 1px solid #333; margin-right: 8px;"></div>
+            <span><strong>BLU:</strong> ≥2500 ft and ≥8 km</span>
+        </div>
+        <div style="margin-top: 8px; font-size: 11px; color: #666; border-top: 1px solid #ddd; padding-top: 6px;">
+            <div style="display: flex; align-items: center; margin-top: 4px;">
+                <img src="''' + cb_icon_uri + '''" 
+                     width="16" height="16" alt="CB" style="margin-right: 6px; border: 1px solid #111; border-radius: 50%; padding: 2px; background: white;"/>
+                <span>Cumulonimbus (CB) in TAF</span>
+            </div>
+        </div>
+    </div>
+    '''
+    m.get_root().html.add_child(folium.Element(legend_html))
+
     for feature in features:
         try:
             coords = feature["geometry"]["coordinates"]
