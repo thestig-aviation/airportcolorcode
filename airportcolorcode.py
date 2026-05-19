@@ -348,11 +348,66 @@ def main():
     # This ensures the browser fetches the updated map after GitHub Actions runs every 15 minutes
     auto_refresh_code = '''
     <meta http-equiv="refresh" content="960">
+    <style>
+        #countdown-timer {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background-color: rgba(255, 255, 255, 0.95);
+            border: 2px solid #888;
+            border-radius: 5px;
+            padding: 8px 12px;
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            font-weight: bold;
+            color: #333;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            z-index: 9999;
+        }
+        #countdown-timer .label {
+            font-weight: normal;
+            font-size: 11px;
+            color: #666;
+        }
+        #countdown-timer .time {
+            font-size: 16px;
+            color: #0066cc;
+            margin-left: 5px;
+        }
+    </style>
     <script>
-        // Auto-refresh every 16 minutes to get updated data
-        setTimeout(function() {
-            location.reload();
-        }, 960000);
+        // Countdown timer for next update
+        let secondsRemaining = 960; // 16 minutes in seconds
+        
+        function updateCountdown() {
+            const minutes = Math.floor(secondsRemaining / 60);
+            const seconds = secondsRemaining % 60;
+            const timeString = minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
+            
+            const timerElement = document.getElementById('countdown-time');
+            if (timerElement) {
+                timerElement.textContent = timeString;
+            }
+            
+            if (secondsRemaining <= 0) {
+                location.reload();
+            } else {
+                secondsRemaining--;
+            }
+        }
+        
+        // Start countdown when page loads
+        window.addEventListener('load', function() {
+            // Add countdown timer element to the page
+            const timerDiv = document.createElement('div');
+            timerDiv.id = 'countdown-timer';
+            timerDiv.innerHTML = '<span class="label">Next update in:</span><span class="time" id="countdown-time">16:00</span>';
+            document.body.appendChild(timerDiv);
+            
+            // Update countdown every second
+            updateCountdown();
+            setInterval(updateCountdown, 1000);
+        });
     </script>
 '''
     
