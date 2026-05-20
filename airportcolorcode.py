@@ -5,6 +5,7 @@ import folium
 from folium.features import DivIcon
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from datetime import datetime, timezone
 
 TAF_API_URL = "https://aviation.met.no/collections/taf/locations"
 REQUEST_TIMEOUT_SECONDS = 20
@@ -15,6 +16,7 @@ DEFAULT_OUTPUT_FILE = BASE_DIR / "airport_color_codes.html"
 
 IWXXM_NS = {
     "iwxxm": "http://icao.int/iwxxm/3.0",
+    "gml": "http://www.opengis.net/gml/3.2",
     "xlink": "http://www.w3.org/1999/xlink",
 }
 
@@ -61,12 +63,33 @@ def _uom_to_ft(value, uom):
     return value
 
 
+def format_issue_time_utc(issue_time_text):
+    if not issue_time_text:
+        return None
+
+    normalized_text = issue_time_text.strip().replace("Z", "+00:00")
+    try:
+        parsed_time = datetime.fromisoformat(normalized_text)
+    except ValueError:
+        return issue_time_text.strip()
+
+    if parsed_time.tzinfo is None:
+        parsed_time = parsed_time.replace(tzinfo=timezone.utc)
+
+    return parsed_time.astimezone(timezone.utc).strftime("%H:%M")
+
+
 def parse_iwxxm_conditions(xml_text):
-    """Parse IWXXM XML and return (lowest significant cloud base ft, worst visibility km, has_cb)."""
+    """Parse IWXXM XML and return (issue time, lowest significant cloud base ft, worst visibility km, has_cb)."""
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
-        return None, None, False
+        return None, None, None, False
+
+    issue_time = None
+    issue_time_elem = root.find(".//iwxxm:issueTime/gml:TimeInstant/gml:timePosition", IWXXM_NS)
+    if issue_time_elem is not None and (issue_time_elem.text or "").strip():
+        issue_time = issue_time_elem.text.strip()
 
     vis_values = []
     for vis in root.findall(".//iwxxm:prevailingVisibility", IWXXM_NS):
@@ -110,7 +133,7 @@ def parse_iwxxm_conditions(xml_text):
     # Use worst visibility and lowest significant cloud base from the TAF.
     visibility_km = min(vis_values) if vis_values else None
     ceiling_ft = min(cloud_bases_ft) if cloud_bases_ft else None
-    return ceiling_ft, visibility_km, has_cb
+    return issue_time, ceiling_ft, visibility_km, has_cb
 
 
 def enrich_features_with_iwxxm(features):
@@ -130,11 +153,13 @@ def enrich_features_with_iwxxm(features):
                 timeout=REQUEST_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
-            ceiling_ft, visibility_km, has_cb = parse_iwxxm_conditions(response.text)
+            issue_time, ceiling_ft, visibility_km, has_cb = parse_iwxxm_conditions(response.text)
+            properties["parsedIssueTime"] = issue_time
             properties["parsedCeilingFt"] = ceiling_ft
             properties["parsedVisibilityKm"] = visibility_km
             properties["parsedHasCb"] = has_cb
         except requests.RequestException:
+            properties["parsedIssueTime"] = None
             properties["parsedCeilingFt"] = None
             properties["parsedVisibilityKm"] = None
             properties["parsedHasCb"] = False
@@ -271,6 +296,7 @@ def build_map(features, cb_icon_uri):
 
             popup_text = (
                 f"<b>{name}</b><br>"
+                f"Issue time: {format_issue_time_utc(properties.get('parsedIssueTime')) or 'N/A'} UTC<br>"
                 f"Color Code: {color_code}<br>"
                 f"Ceiling: {ceiling_ft if ceiling_ft is not None else 'N/A'} ft<br>"
                 f"Visibility: {visibility_km if visibility_km is not None else 'N/A'} km"
