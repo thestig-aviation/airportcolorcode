@@ -80,11 +80,11 @@ def format_issue_time_utc(issue_time_text):
 
 
 def parse_iwxxm_conditions(xml_text):
-    """Parse IWXXM XML and return (issue time, lowest significant cloud base ft, worst visibility km, has_cb)."""
+    """Parse IWXXM XML and return (issue time, ceiling ft, visibility km, has_cb, ceiling source)."""
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
-        return None, None, None, False
+        return None, None, None, False, None
 
     issue_time = None
     issue_time_elem = root.find(".//iwxxm:issueTime/gml:TimeInstant/gml:timePosition", IWXXM_NS)
@@ -101,8 +101,20 @@ def parse_iwxxm_conditions(xml_text):
         if vis_km is not None:
             vis_values.append(vis_km)
 
-    significant_amounts = {"SCT", "BKN", "OVC"}
-    cloud_bases_ft = []
+    significant_amounts = {"VV", "BKN", "OVC"}
+    ceiling_candidates = []
+
+    for vv in root.findall(".//iwxxm:verticalVisibility", IWXXM_NS):
+        if not (vv.text or "").strip():
+            continue
+        try:
+            vv_value = float(vv.text.strip())
+        except ValueError:
+            continue
+        vv_ft = _uom_to_ft(vv_value, vv.get("uom", "[ft_i]"))
+        if vv_ft is not None:
+            ceiling_candidates.append(("VV", vv_ft))
+
     has_cb = False
     for layer in root.findall(".//iwxxm:CloudLayer", IWXXM_NS):
         amount_elem = layer.find("iwxxm:amount", IWXXM_NS)
@@ -128,12 +140,15 @@ def parse_iwxxm_conditions(xml_text):
             continue
         base_ft = _uom_to_ft(base_value, base_elem.get("uom", "[ft_i]"))
         if base_ft is not None:
-            cloud_bases_ft.append(base_ft)
+            ceiling_candidates.append((amount_code, base_ft))
 
     # Use worst visibility and lowest significant cloud base from the TAF.
     visibility_km = min(vis_values) if vis_values else None
-    ceiling_ft = min(cloud_bases_ft) if cloud_bases_ft else None
-    return issue_time, ceiling_ft, visibility_km, has_cb
+    ceiling_source = None
+    ceiling_ft = None
+    if ceiling_candidates:
+        ceiling_source, ceiling_ft = min(ceiling_candidates, key=lambda item: item[1])
+    return issue_time, ceiling_ft, visibility_km, has_cb, ceiling_source
 
 
 def enrich_features_with_iwxxm(features):
@@ -153,16 +168,18 @@ def enrich_features_with_iwxxm(features):
                 timeout=REQUEST_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
-            issue_time, ceiling_ft, visibility_km, has_cb = parse_iwxxm_conditions(response.text)
+            issue_time, ceiling_ft, visibility_km, has_cb, ceiling_source = parse_iwxxm_conditions(response.text)
             properties["parsedIssueTime"] = issue_time
             properties["parsedCeilingFt"] = ceiling_ft
             properties["parsedVisibilityKm"] = visibility_km
             properties["parsedHasCb"] = has_cb
+            properties["parsedCeilingSource"] = ceiling_source
         except requests.RequestException:
             properties["parsedIssueTime"] = None
             properties["parsedCeilingFt"] = None
             properties["parsedVisibilityKm"] = None
             properties["parsedHasCb"] = False
+            properties["parsedCeilingSource"] = None
 
 
 def ensure_local_cb_icon():
@@ -197,34 +214,55 @@ def get_colour_state(ceiling_ft, visibility_km):
 
 
 def parse_conditions(feature):
-    """Extract ceiling and visibility from a TAF feature."""
+    """Extract ceiling, visibility, and ceiling source from a TAF feature."""
     ceiling_ft = None
     visibility_km = None
+    ceiling_source = None
 
     try:
         properties = feature.get("properties", {})
         parsed_ceiling = properties.get("parsedCeilingFt")
         parsed_visibility = properties.get("parsedVisibilityKm")
+        parsed_ceiling_source = properties.get("parsedCeilingSource")
         if parsed_ceiling is not None or parsed_visibility is not None:
-            return parsed_ceiling, parsed_visibility
+            return parsed_ceiling, parsed_visibility, parsed_ceiling_source
 
         # Visibility in meters, convert to km
         vis_m = properties.get("visibility", {}).get("value")
         if vis_m is not None:
             visibility_km = vis_m / 1000.0
 
-        # Cloud layers - find lowest BKN or OVC layer
+        # Cloud layers - find lowest BKN, OVC, or VV layer
         clouds = properties.get("clouds", [])
         for layer in clouds:
             cover = layer.get("amount", "")
             base = layer.get("base", {}).get("value")
-            if cover in ("BKN", "OVC") and base is not None:
+            if cover in ("BKN", "OVC", "VV") and base is not None:
                 if ceiling_ft is None or base < ceiling_ft:
                     ceiling_ft = base
+                    ceiling_source = cover
     except Exception:
         pass
 
-    return ceiling_ft, visibility_km
+    return ceiling_ft, visibility_km, ceiling_source
+
+
+def _state_rank(code):
+    return {
+        "RED": 0,
+        "AMB": 1,
+        "YLO2": 2,
+        "YLO1": 3,
+        "GRN": 4,
+        "WHT": 5,
+        "BLU": 6,
+    }[code]
+
+
+def _is_ceiling_driver(color_code, ceiling_ft, visibility_km):
+    ceiling_only = get_colour_state(ceiling_ft, None)
+    visibility_only = get_colour_state(None, visibility_km)
+    return _state_rank(ceiling_only) <= _state_rank(visibility_only) and color_code == ceiling_only
 
 
 def build_map(features, cb_icon_uri):
@@ -292,7 +330,7 @@ def build_map(features, cb_icon_uri):
             name = properties.get("ICAO") or properties.get("stationIdentification") or properties.get("name") or "Unknown"
             has_cb = properties.get("parsedHasCb", False)
 
-            ceiling_ft, visibility_km = parse_conditions(feature)
+            ceiling_ft, visibility_km, ceiling_source = parse_conditions(feature)
             color_code = get_colour_state(ceiling_ft, visibility_km)
             hex_color = COLOUR_STATE_COLORS[color_code]
 
@@ -300,7 +338,7 @@ def build_map(features, cb_icon_uri):
                 f"<b>{name}</b><br>"
                 f"Issue time: {format_issue_time_utc(properties.get('parsedIssueTime')) or 'N/A'} UTC<br>"
                 f"Color Code: {color_code}<br>"
-                f"Ceiling: {ceiling_ft if ceiling_ft is not None else 'N/A'} ft<br>"
+                f"Ceiling/VV: {ceiling_ft if ceiling_ft is not None else 'N/A'} ft<br>"
                 f"Visibility: {visibility_km if visibility_km is not None else 'N/A'} km"
             )
 
