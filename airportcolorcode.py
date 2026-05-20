@@ -9,9 +9,9 @@ from datetime import datetime, timezone
 
 TAF_API_URL = "https://aviation.met.no/collections/taf/locations"
 REQUEST_TIMEOUT_SECONDS = 20
-CB_ICON_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Clouds_CL_3.svg/120px-Clouds_CL_3.svg.png"
 CB_ICON_LOCAL_NAME = "cb_symbol.png"
 BASE_DIR = Path(__file__).resolve().parent
+CB_ICON_PATH = BASE_DIR / CB_ICON_LOCAL_NAME
 DEFAULT_OUTPUT_FILE = BASE_DIR / "airport_color_codes.html"
 
 IWXXM_NS = {
@@ -166,8 +166,10 @@ def enrich_features_with_iwxxm(features):
 
 
 def ensure_local_cb_icon():
-    """Return online CB icon URL for HTML usage."""
-    return CB_ICON_URL
+    """Return the local CB icon path used by the generated HTML."""
+    if not CB_ICON_PATH.exists():
+        raise FileNotFoundError(f"Missing CB icon asset: {CB_ICON_PATH}")
+    return CB_ICON_LOCAL_NAME
 
 
 def get_colour_state(ceiling_ft, visibility_km):
