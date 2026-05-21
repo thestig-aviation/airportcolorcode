@@ -364,11 +364,12 @@ def build_map(features, cb_icon_uri, tcu_icon_uri):
 
             folium.CircleMarker(
                 location=[lat, lon],
-                radius=11,
-                color=hex_color,
+                radius=10,
+                color="#333",
+                weight=1,
                 fill=True,
                 fill_color=hex_color,
-                fill_opacity=0.8,
+                fill_opacity=1.0,
                 popup=folium.Popup(popup_text, max_width=200),
                 tooltip=f"{name}: {color_code}",
             ).add_to(m)
