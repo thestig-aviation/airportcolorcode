@@ -10,8 +10,10 @@ from datetime import datetime, timezone
 TAF_API_URL = "https://aviation.met.no/collections/taf/locations"
 REQUEST_TIMEOUT_SECONDS = 20
 CB_ICON_LOCAL_NAME = "cb_symbol.png"
+TCU_ICON_LOCAL_NAME = "tcu_symbol.png"
 BASE_DIR = Path(__file__).resolve().parent
 CB_ICON_PATH = BASE_DIR / CB_ICON_LOCAL_NAME
+TCU_ICON_PATH = BASE_DIR / TCU_ICON_LOCAL_NAME
 DEFAULT_OUTPUT_FILE = BASE_DIR / "airport_color_codes.html"
 
 IWXXM_NS = {
@@ -80,11 +82,11 @@ def format_issue_time_utc(issue_time_text):
 
 
 def parse_iwxxm_conditions(xml_text):
-    """Parse IWXXM XML and return (issue time, ceiling ft, visibility km, has_cb, ceiling source)."""
+    """Parse IWXXM XML and return (issue time, ceiling ft, visibility km, has_cb, has_tcu, ceiling source)."""
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
-        return None, None, None, False, None
+        return None, None, None, False, False, None
 
     issue_time = None
     issue_time_elem = root.find(".//iwxxm:issueTime/gml:TimeInstant/gml:timePosition", IWXXM_NS)
@@ -116,6 +118,7 @@ def parse_iwxxm_conditions(xml_text):
             ceiling_candidates.append(("VV", vv_ft))
 
     has_cb = False
+    has_tcu = False
     for layer in root.findall(".//iwxxm:CloudLayer", IWXXM_NS):
         amount_elem = layer.find("iwxxm:amount", IWXXM_NS)
         base_elem = layer.find("iwxxm:base", IWXXM_NS)
@@ -125,6 +128,8 @@ def parse_iwxxm_conditions(xml_text):
             cloud_type_text = (cloud_type_elem.text or "").strip().upper()
             if cloud_type_href.upper().endswith("/CB") or cloud_type_text == "CB":
                 has_cb = True
+            if cloud_type_href.upper().endswith("/TCU") or cloud_type_text == "TCU":
+                has_tcu = True
 
         if amount_elem is None or base_elem is None or not (base_elem.text or "").strip():
             continue
@@ -148,7 +153,7 @@ def parse_iwxxm_conditions(xml_text):
     ceiling_ft = None
     if ceiling_candidates:
         ceiling_source, ceiling_ft = min(ceiling_candidates, key=lambda item: item[1])
-    return issue_time, ceiling_ft, visibility_km, has_cb, ceiling_source
+    return issue_time, ceiling_ft, visibility_km, has_cb, has_tcu, ceiling_source
 
 
 def enrich_features_with_iwxxm(features):
@@ -168,17 +173,19 @@ def enrich_features_with_iwxxm(features):
                 timeout=REQUEST_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
-            issue_time, ceiling_ft, visibility_km, has_cb, ceiling_source = parse_iwxxm_conditions(response.text)
+            issue_time, ceiling_ft, visibility_km, has_cb, has_tcu, ceiling_source = parse_iwxxm_conditions(response.text)
             properties["parsedIssueTime"] = issue_time
             properties["parsedCeilingFt"] = ceiling_ft
             properties["parsedVisibilityKm"] = visibility_km
             properties["parsedHasCb"] = has_cb
+            properties["parsedHasTcu"] = has_tcu
             properties["parsedCeilingSource"] = ceiling_source
         except requests.RequestException:
             properties["parsedIssueTime"] = None
             properties["parsedCeilingFt"] = None
             properties["parsedVisibilityKm"] = None
             properties["parsedHasCb"] = False
+            properties["parsedHasTcu"] = False
             properties["parsedCeilingSource"] = None
 
 
@@ -187,6 +194,13 @@ def ensure_local_cb_icon():
     if not CB_ICON_PATH.exists():
         raise FileNotFoundError(f"Missing CB icon asset: {CB_ICON_PATH}")
     return CB_ICON_LOCAL_NAME
+
+
+def ensure_local_tcu_icon():
+    """Return the local TCU icon path used by the generated HTML."""
+    if not TCU_ICON_PATH.exists():
+        raise FileNotFoundError(f"Missing TCU icon asset: {TCU_ICON_PATH}")
+    return TCU_ICON_LOCAL_NAME
 
 
 def get_colour_state(ceiling_ft, visibility_km):
@@ -265,7 +279,7 @@ def _is_ceiling_driver(color_code, ceiling_ft, visibility_km):
     return _state_rank(ceiling_only) <= _state_rank(visibility_only) and color_code == ceiling_only
 
 
-def build_map(features, cb_icon_uri):
+def build_map(features, cb_icon_uri, tcu_icon_uri):
     m = folium.Map(location=[65, 15], zoom_start=4)
 
     # Add legend to the map
@@ -284,38 +298,43 @@ def build_map(features, cb_icon_uri):
                 z-index: 9999;">
         <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">Color State Criteria</h4>
         <div style="display: flex; align-items: center; margin: 4px 0;">
-            <div style="width: 20px; height: 20px; background-color: #FF0000; border: 1px solid #333; margin-right: 8px;"></div>
+            <div style="width: 20px; height: 20px; background-color: #FF0000; border: 1px solid #333; border-radius: 50%; margin-right: 8px;"></div>
             <span><strong>RED:</strong> &lt;200 ft or &lt;0.8 km</span>
         </div>
         <div style="display: flex; align-items: center; margin: 4px 0;">
-            <div style="width: 20px; height: 20px; background-color: #FF8000; border: 1px solid #333; margin-right: 8px;"></div>
+            <div style="width: 20px; height: 20px; background-color: #FF8000; border: 1px solid #333; border-radius: 50%; margin-right: 8px;"></div>
             <span><strong>AMB:</strong> &lt;300 ft or &lt;1.6 km</span>
         </div>
         <div style="display: flex; align-items: center; margin: 4px 0;">
-            <div style="width: 20px; height: 20px; background-color: #FFC000; border: 1px solid #333; margin-right: 8px;"></div>
+            <div style="width: 20px; height: 20px; background-color: #FFC000; border: 1px solid #333; border-radius: 50%; margin-right: 8px;"></div>
             <span><strong>YLO2:</strong> &lt;500 ft or &lt;2.5 km</span>
         </div>
         <div style="display: flex; align-items: center; margin: 4px 0;">
-            <div style="width: 20px; height: 20px; background-color: #FFF200; border: 1px solid #333; margin-right: 8px;"></div>
+            <div style="width: 20px; height: 20px; background-color: #FFF200; border: 1px solid #333; border-radius: 50%; margin-right: 8px;"></div>
             <span><strong>YLO1:</strong> &lt;700 ft or &lt;3.7 km</span>
         </div>
         <div style="display: flex; align-items: center; margin: 4px 0;">
-            <div style="width: 20px; height: 20px; background-color: #00A000; border: 1px solid #333; margin-right: 8px;"></div>
+            <div style="width: 20px; height: 20px; background-color: #00A000; border: 1px solid #333; border-radius: 50%; margin-right: 8px;"></div>
             <span><strong>GRN:</strong> &lt;1500 ft or &lt;5 km</span>
         </div>
         <div style="display: flex; align-items: center; margin: 4px 0;">
-            <div style="width: 20px; height: 20px; background-color: #FFFFFF; border: 1px solid #333; margin-right: 8px;"></div>
+            <div style="width: 20px; height: 20px; background-color: #FFFFFF; border: 1px solid #333; border-radius: 50%; margin-right: 8px;"></div>
             <span><strong>WHT:</strong> &lt;2500 ft or &lt;8 km</span>
         </div>
         <div style="display: flex; align-items: center; margin: 4px 0;">
-            <div style="width: 20px; height: 20px; background-color: #0000FF; border: 1px solid #333; margin-right: 8px;"></div>
+            <div style="width: 20px; height: 20px; background-color: #0000FF; border: 1px solid #333; border-radius: 50%; margin-right: 8px;"></div>
             <span><strong>BLU:</strong> ≥2500 ft and ≥8 km</span>
         </div>
         <div style="margin-top: 8px; font-size: 11px; color: #666; border-top: 1px solid #ddd; padding-top: 6px;">
             <div style="display: flex; align-items: center; margin-top: 4px;">
-                <img src="''' + cb_icon_uri + '''" 
-                     width="16" height="16" alt="CB" style="margin-right: 6px; border: 1px solid #111; border-radius: 50%; padding: 2px; background: white;"/>
+                 <img src="''' + cb_icon_uri + '''" 
+                     width="23" height="23" alt="CB" style="margin-right: 6px; border: 2px solid #111; border-radius: 50%; padding: 2px; background: white; box-shadow:0 1px 4px rgba(0,0,0,0.45);"/>
                 <span>Cumulonimbus (CB) in TAF</span>
+            </div>
+            <div style="display: flex; align-items: center; margin-top: 4px;">
+                <img src="''' + tcu_icon_uri + '''"
+                     width="23" height="23" alt="TCU" style="margin-right: 6px; border: 2px solid #111; border-radius: 50%; padding: 2px; background: white; box-shadow:0 1px 4px rgba(0,0,0,0.45);"/>
+                <span>Towering Cumulus (TCU) in TAF</span>
             </div>
         </div>
     </div>
@@ -329,6 +348,7 @@ def build_map(features, cb_icon_uri):
             properties = feature.get("properties", {})
             name = properties.get("ICAO") or properties.get("stationIdentification") or properties.get("name") or "Unknown"
             has_cb = properties.get("parsedHasCb", False)
+            has_tcu = properties.get("parsedHasTcu", False)
 
             ceiling_ft, visibility_km, ceiling_source = parse_conditions(feature)
             color_code = get_colour_state(ceiling_ft, visibility_km)
@@ -344,7 +364,7 @@ def build_map(features, cb_icon_uri):
 
             folium.CircleMarker(
                 location=[lat, lon],
-                radius=8,
+                radius=11,
                 color=hex_color,
                 fill=True,
                 fill_color=hex_color,
@@ -354,19 +374,36 @@ def build_map(features, cb_icon_uri):
             ).add_to(m)
 
             if has_cb:
-                # Add cumulonimbus weather symbol near stations that include CB in TAF.
+                # CB takes priority over TCU if both are present.
                 folium.Marker(
                     location=[lat, lon],
                     icon=DivIcon(
-                        icon_size=(32, 32),
+                        icon_size=(40, 40),
                         icon_anchor=(0, 0),
                         html=(
-                            '<div style="position:relative;left:-24px;top:-24px;'
-                            'width:22px;height:22px;display:flex;align-items:center;justify-content:center;'
+                            '<div style="position:relative;left:-30px;top:-34px;'
+                            'width:30px;height:30px;display:flex;align-items:center;justify-content:center;'
                             'background:rgba(255,255,255,0.96);border:2px solid #111;border-radius:50%;'
                             'box-shadow:0 1px 4px rgba(0,0,0,0.45);" title="Cumulonimbus (CB) in TAF">'
                             f'<img src="{cb_icon_uri}" '
-                            'width="17" height="17" alt="CB" style="display:block;"/>'
+                            'width="23" height="23" alt="CB" style="display:block;"/>'
+                            '</div>'
+                        ),
+                    ),
+                ).add_to(m)
+            elif has_tcu:
+                folium.Marker(
+                    location=[lat, lon],
+                    icon=DivIcon(
+                        icon_size=(40, 40),
+                        icon_anchor=(0, 0),
+                        html=(
+                            '<div style="position:relative;left:-30px;top:-34px;'
+                            'width:30px;height:30px;display:flex;align-items:center;justify-content:center;'
+                            'background:rgba(255,255,255,0.96);border:2px solid #111;border-radius:50%;'
+                            'box-shadow:0 1px 4px rgba(0,0,0,0.45);" title="Towering Cumulus (TCU) in TAF">'
+                            f'<img src="{tcu_icon_uri}" '
+                            'width="23" height="23" alt="TCU" style="display:block;"/>'
                             '</div>'
                         ),
                     ),
@@ -379,10 +416,10 @@ def build_map(features, cb_icon_uri):
                     icon_size=(34, 12),
                     icon_anchor=(-5, 6),
                     html=(
-                        '<div style="font-size:10px;font-weight:bold;'
+                        '<div style="font-size:13px;font-weight:bold;'
                         'line-height:10px;display:inline-block;white-space:nowrap;'
                         'color:#111;background:rgba(255,255,255,0.45);'
-                        'padding:0 2px;border-radius:2px;">'
+                        'padding:0 2px;border-radius:2px;margin-left:6px;">'
                         f"{name}</div>"
                     ),
                 ),
@@ -397,13 +434,14 @@ def main():
     print("Fetching TAF data...")
     data = fetch_taf_data()
     cb_icon_uri = ensure_local_cb_icon()
+    tcu_icon_uri = ensure_local_tcu_icon()
 
     features = data.get("features", [])
     print(f"Found {len(features)} TAF locations.")
     print("Fetching per-location IWXXM data...")
     enrich_features_with_iwxxm(features)
 
-    m = build_map(features, cb_icon_uri)
+    m = build_map(features, cb_icon_uri, tcu_icon_uri)
     m.save(str(DEFAULT_OUTPUT_FILE))
     
     # Add auto-refresh and header/notice to the HTML file
