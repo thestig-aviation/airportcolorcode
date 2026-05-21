@@ -2,22 +2,43 @@
 
 Generate and publish a color-coded TAF map for airports using data from https://aviation.met.no.
 
-The script:
-- Downloads TAF location data
-- Enriches each location with IWXXM ceiling/visibility values
-- Assigns UK/European color state categories (`BLU`, `WHT`, `GRN`, `YLO1`, `YLO2`, `AMB`, `RED`)
-- Writes an interactive Folium map to `airport_color_codes.html`
+## Capabilities
+
+- Fetches all available TAF locations from the MET Aviation API.
+- Fetches per-airport IWXXM payloads and parses:
+	- issue time
+	- prevailing visibility
+	- cloud ceiling drivers (`VV`, `BKN`, `OVC`)
+	- CB (cumulonimbus) presence in cloud layers
+- Converts units from IWXXM (meters, km, miles, feet) to:
+	- visibility in km
+	- ceiling in ft
+- Calculates UK/European colour state category per airport:
+	- `BLU`, `WHT`, `GRN`, `YLO1`, `YLO2`, `AMB`, `RED`
+- Renders an interactive Folium map with:
+	- color-coded airport markers
+	- tooltip with ICAO and color code
+	- popup with issue time, ceiling and visibility
+	- persistent ICAO labels
+	- CB symbol overlay for airports with cumulonimbus in TAF
+	- color-state legend panel
+- Adds a centered transparent status notice in generated HTML:
+	- `Airport Color Code — alpha version`
+	- `Last Build: <timestamp>` (fetched from latest commit on `main` for `thestig-aviation/airportcolorcode`)
+- Injects client-side auto-refresh logic into output HTML:
+	- countdown timer visible in lower-right corner
+	- automatic page reload at `:01`, `:16`, `:31`, `:46`
 
 ## Repository Layout
 
-- `airportcolorcode.py`: Main script
-- `airport_color_codes.html`: Generated map output (can be published with GitHub Pages)
-- `cb_symbol.png`: Optional local icon asset
-- `.github/workflows/publish-map.yml`: Optional automation to regenerate and deploy map
+- `airportcolorcode.py`: Main generator script.
+- `airport_color_codes.html`: Generated map output.
+- `cb_symbol.png`: Local icon asset used for CB markers.
+- `.github/workflows/publish-map.yml`: GitHub Actions workflow for build and Pages deployment.
 
 ## Quick Start
 
-### 1. Create and activate a virtual environment
+### 1. Create and activate virtual environment
 
 ```bash
 python3 -m venv .venv
@@ -30,33 +51,43 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Generate the map
+### 3. Generate map
 
 ```bash
 python airportcolorcode.py
 ```
 
-Output is written to:
+Generated output:
 
 - `airport_color_codes.html`
 
-## Publish on GitHub Pages
+## GitHub Pages Deployment
 
-This repository includes a workflow in `.github/workflows/publish-map.yml` that:
-- Regenerates `airport_color_codes.html`
-- Creates `index.html` from the generated map for GitHub Pages root
-- Deploys that HTML as a GitHub Pages site
+Workflow file: `.github/workflows/publish-map.yml`
 
-To enable it:
-1. Push this folder as a GitHub repository.
-2. In GitHub, open **Settings -> Pages**.
+Current workflow behavior:
+
+- Triggers:
+	- push to `main`
+	- manual run (`workflow_dispatch`)
+	- scheduled every 15 minutes (`*/15 * * * *`)
+- Build job:
+	- installs Python 3.11 + dependencies
+	- runs `airportcolorcode.py`
+	- copies `airport_color_codes.html` to `index.html`
+	- uploads Pages artifact
+- Deploy job:
+	- publishes artifact to GitHub Pages
+
+Enable Pages:
+
+1. Push repository to GitHub.
+2. Open **Settings -> Pages**.
 3. Under **Build and deployment**, select **Source: GitHub Actions**.
-4. Run the workflow once manually from the **Actions** tab (or push to `main`).
 
-After deployment, your map will be available at your Pages URL.
+## Operational Notes
 
-## Notes
-
-- The map uses external CDN resources (Leaflet/Bootstrap/Folium assets), so internet access is required when viewing it.
-- Data is fetched live from `aviation.met.no` each run.
-- The script writes output relative to its own folder, making local and CI execution consistent.
+- Live data and HTML assets depend on internet access.
+- The script gracefully continues if individual airport IWXXM requests fail.
+- If GitHub API cannot be reached/rate-limited, `Last Build` is shown as `unavailable`.
+- Output path is fixed relative to script location for local and CI consistency.
