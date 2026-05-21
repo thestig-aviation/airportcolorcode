@@ -406,12 +406,39 @@ def main():
     m = build_map(features, cb_icon_uri)
     m.save(str(DEFAULT_OUTPUT_FILE))
     
-    # Add auto-refresh to the HTML file
+    # Add auto-refresh and header/notice to the HTML file
     with open(DEFAULT_OUTPUT_FILE, "r", encoding="utf-8") as f:
         html_content = f.read()
-    
-    # Inject JavaScript for auto-reload at :01, :16, :31, and :46 minutes past each hour
-    # (1 minute after GitHub Actions runs at :00, :15, :30, :45)
+
+    # Fetch last commit time from GitHub main branch
+    last_deploy_time = None
+    try:
+        api_url = "https://api.github.com/repos/thestig-aviation/airportcolorcode/commits/main"
+        resp = requests.get(api_url, timeout=10)
+        if resp.ok:
+            commit_data = resp.json()
+            last_deploy_time = commit_data["commit"]["committer"]["date"]
+            # Format to readable UTC
+            dt = datetime.fromisoformat(last_deploy_time.replace("Z", "+00:00"))
+            last_deploy_time = dt.strftime("%Y-%m-%d %H:%M UTC")
+    except Exception:
+        last_deploy_time = None
+
+    # Centered alpha notice at the top, transparent background, with last deploy time
+    alpha_notice_html = f'''
+    <div style="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10001;font-family:Arial,sans-serif;font-size:15px;color:#222;background:rgba(255,255,255,0.55);padding:6px 18px 6px 16px;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,0.07);pointer-events:none;text-align:center;">
+        Airport Color Code &mdash; <span style=\"color:#b36b00;\">alpha version</span><br/>
+        <span style="font-size:13px;color:#444;">Last Build: {last_deploy_time or 'unavailable'}</span>
+    </div>
+    '''
+
+    # Insert notice after <body> tag
+    if "<body>" in html_content:
+        html_content = html_content.replace("<body>", "<body>\n" + alpha_notice_html, 1)
+    else:
+        html_content = alpha_notice_html + html_content
+
+    # Auto-refresh JavaScript and style to inject
     auto_refresh_code = '''
     <style>
         #countdown-timer {
@@ -444,50 +471,34 @@ def main():
         // Refresh at :01, :16, :31, and :46 minutes past each hour
         const TARGET_MINUTES = [1, 16, 31, 46];
         let secondsRemaining = 0;
-        
         function calculateSecondsUntilNextUpdate() {
             const now = new Date();
             const currentMinute = now.getMinutes();
             const currentSecond = now.getSeconds();
-            
-            // Find the next target minute
             let nextTargetMinute = TARGET_MINUTES.find(m => m > currentMinute);
-            
-            // If no target found in current hour, use first target of next hour
             if (nextTargetMinute === undefined) {
-                nextTargetMinute = TARGET_MINUTES[0] + 60; // Add 60 for next hour
+                nextTargetMinute = TARGET_MINUTES[0] + 60;
             }
-            
-            // Calculate seconds until target
             const minutesUntil = nextTargetMinute - currentMinute;
             const secondsUntil = (minutesUntil * 60) - currentSecond;
-            
             return secondsUntil;
         }
-        
         function updateCountdown() {
             const minutes = Math.floor(secondsRemaining / 60);
             const seconds = secondsRemaining % 60;
             const timeString = minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
-            
             const timerElement = document.getElementById('countdown-time');
             if (timerElement) {
                 timerElement.textContent = timeString;
             }
-            
             if (secondsRemaining <= 0) {
                 location.reload();
             } else {
                 secondsRemaining--;
             }
         }
-        
-        // Start countdown when page loads
         window.addEventListener('load', function() {
-            // Calculate initial countdown
             secondsRemaining = calculateSecondsUntilNextUpdate();
-            
-            // Add countdown timer element to the page
             const timerDiv = document.createElement('div');
             timerDiv.id = 'countdown-timer';
             const minutes = Math.floor(secondsRemaining / 60);
@@ -495,19 +506,17 @@ def main():
             const initialTime = minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
             timerDiv.innerHTML = '<span class="label">Next update in:</span><span class="time" id="countdown-time">' + initialTime + '</span>';
             document.body.appendChild(timerDiv);
-            
-            // Update countdown every second
             setInterval(updateCountdown, 1000);
         });
     </script>
-'''
-    
+    '''
+
     # Insert the auto-refresh code in the <head> section
     html_content = html_content.replace('</head>', auto_refresh_code + '</head>')
-    
+
     with open(DEFAULT_OUTPUT_FILE, "w", encoding="utf-8") as f:
         f.write(html_content)
-    
+
     print(f"Map saved to {DEFAULT_OUTPUT_FILE} with auto-refresh enabled")
 
 
