@@ -508,7 +508,49 @@ def main():
     <script>
         // Refresh at :01, :16, :31, and :46 minutes past each hour
         const TARGET_MINUTES = [1, 16, 31, 46];
+        const MAP_VIEW_STORAGE_KEY = 'airportcolorcode.mapView.v1';
         let secondsRemaining = 0;
+
+        function getLeafletMapInstance() {
+            for (const value of Object.values(window)) {
+                if (value && typeof L !== 'undefined' && value instanceof L.Map) {
+                    return value;
+                }
+            }
+            return null;
+        }
+
+        function restoreMapView(map) {
+            try {
+                const saved = localStorage.getItem(MAP_VIEW_STORAGE_KEY);
+                if (!saved) {
+                    return;
+                }
+                const view = JSON.parse(saved);
+                if (!view || typeof view.lat !== 'number' || typeof view.lng !== 'number' || typeof view.zoom !== 'number') {
+                    return;
+                }
+                map.setView([view.lat, view.lng], view.zoom, { animate: false });
+            } catch (err) {
+                // Ignore malformed local storage values.
+            }
+        }
+
+        function persistMapView(map) {
+            map.on('moveend', function() {
+                try {
+                    const center = map.getCenter();
+                    const zoom = map.getZoom();
+                    localStorage.setItem(
+                        MAP_VIEW_STORAGE_KEY,
+                        JSON.stringify({ lat: center.lat, lng: center.lng, zoom: zoom })
+                    );
+                } catch (err) {
+                    // Ignore storage quota/privacy errors.
+                }
+            });
+        }
+
         function calculateSecondsUntilNextUpdate() {
             const now = new Date();
             const currentMinute = now.getMinutes();
@@ -536,6 +578,12 @@ def main():
             }
         }
         window.addEventListener('load', function() {
+            const map = getLeafletMapInstance();
+            if (map) {
+                restoreMapView(map);
+                persistMapView(map);
+            }
+
             secondsRemaining = calculateSecondsUntilNextUpdate();
             const timerDiv = document.createElement('div');
             timerDiv.id = 'countdown-timer';
