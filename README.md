@@ -9,7 +9,7 @@ Generate and publish a color-coded TAF map for airports using data from https://
 	- issue time
 	- prevailing visibility
 	- cloud ceiling drivers (`VV`, `BKN`, `OVC`)
-	- CB (cumulonimbus) presence in cloud layers
+	- CB (cumulonimbus) and TCU (towering cumulus) presence in cloud layers
 - Converts units from IWXXM (meters, km, miles, feet) to:
 	- visibility in km
 	- ceiling in ft
@@ -20,7 +20,8 @@ Generate and publish a color-coded TAF map for airports using data from https://
 	- tooltip with ICAO and color code
 	- popup with issue time, ceiling and visibility
 	- persistent ICAO labels
-	- CB symbol overlay for airports with cumulonimbus in TAF
+	- CB/TCU symbol overlay for airports with convective cloud in TAF
+	- CB priority when both CB and TCU are present in the same forecast
 	- color-state legend panel
 - Adds a centered transparent status notice in generated HTML:
 	- `Airport Color Code — alpha version`
@@ -34,6 +35,7 @@ Generate and publish a color-coded TAF map for airports using data from https://
 - `airportcolorcode.py`: Main generator script.
 - `airport_color_codes.html`: Generated map output.
 - `cb_symbol.png`: Local icon asset used for CB markers.
+- `tcu_symbol.png`: Local icon asset used for TCU markers.
 - `.github/workflows/publish-map.yml`: GitHub Actions workflow for build and Pages deployment.
 
 ## Quick Start
