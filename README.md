@@ -33,7 +33,14 @@ Generate and publish a color-coded TAF map for airports using data from https://
 
 ## Repository Layout
 
-- `airportcolorcode.py`: Main generator script.
+- `airportcolorcode.py`: Compatibility entrypoint used by local runs and GitHub Actions.
+- `app.py`: Top-level orchestration for fetch, enrich, render, and post-processing.
+- `config.py`: Shared constants, API URLs, and local output/icon paths.
+- `taf_client.py`: TAF list retrieval and per-airport IWXXM enrichment.
+- `iwxxm_parser.py`: IWXXM XML parsing and unit conversion helpers.
+- `logic.py`: Issue-time formatting, condition parsing fallback, and colour-state rules.
+- `map_renderer.py`: Folium map rendering, marker drawing, legend, and icon overlays.
+- `html_postprocess.py`: HTML notice/countdown injection and map auto-refresh behavior.
 - `airport_color_codes.html`: Generated map output.
 - `cb_symbol.png`: Local icon asset used for CB markers.
 - `tcu_symbol.png`: Local icon asset used for TCU markers.
