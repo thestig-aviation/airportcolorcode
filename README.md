@@ -29,6 +29,7 @@ Generate and publish a color-coded TAF map for airports using data from https://
 - Injects client-side auto-refresh logic into output HTML:
 	- countdown timer visible in lower-right corner
 	- automatic page reload at `:01`, `:16`, `:31`, `:46`
+	- retains map center/zoom between refreshes using browser local storage
 
 ## Repository Layout
 
@@ -93,3 +94,4 @@ Enable Pages:
 - The script gracefully continues if individual airport IWXXM requests fail.
 - If GitHub API cannot be reached/rate-limited, `Last Build` is shown as `unavailable`.
 - Output path is fixed relative to script location for local and CI consistency.
+- Saved map view persistence is browser-specific (stored in `localStorage`).
