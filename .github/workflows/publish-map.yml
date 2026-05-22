@@ -37,6 +37,7 @@ jobs:
 
       - name: Generate map (with retry)
         run: |
+          START_TIME=$(date +%s)
           for attempt in 1 2 3; do
             echo "Map generation attempt ${attempt}..."
             python airportcolorcode.py && break
@@ -46,6 +47,9 @@ jobs:
             fi
             sleep 20
           done
+          END_TIME=$(date +%s)
+          ELAPSED=$((END_TIME - START_TIME))
+          echo "Map generation completed in ${ELAPSED} seconds"
           cp airport_color_codes.html index.html
 
       - name: Upload Pages artifact
