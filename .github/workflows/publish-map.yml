@@ -15,11 +15,12 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,9 +35,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Generate map
+      - name: Generate map (with retry)
         run: |
-          python airportcolorcode.py
+          for attempt in 1 2 3; do
+            echo "Map generation attempt ${attempt}..."
+            python airportcolorcode.py && break
+            if [ "$attempt" -eq 3 ]; then
+              echo "Map generation failed after 3 attempts"
+              exit 1
+            fi
+            sleep 20
+          done
           cp airport_color_codes.html index.html
 
       - name: Upload Pages artifact
