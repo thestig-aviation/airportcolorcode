@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 
@@ -18,18 +18,53 @@ def _fetch_last_deploy_time_text():
     return last_deploy_time
 
 
-def postprocess_generated_html(output_file):
+def _extract_latest_issue_time_text_and_icao(features):
+    latest_issue_time = None
+    latest_issue_icao = None
+
+    for feature in features or []:
+        properties = feature.get("properties", {})
+        issue_time_text = properties.get("parsedIssueTime")
+        icao = properties.get("ICAO") or properties.get("stationIdentification")
+        if not issue_time_text:
+            continue
+
+        normalized_text = issue_time_text.strip().replace("Z", "+00:00")
+        try:
+            parsed_time = datetime.fromisoformat(normalized_text)
+        except ValueError:
+            continue
+
+        if parsed_time.tzinfo is None:
+            parsed_time = parsed_time.replace(tzinfo=timezone.utc)
+
+        if latest_issue_time is None or parsed_time > latest_issue_time:
+            latest_issue_time = parsed_time
+            latest_issue_icao = icao
+
+    if latest_issue_time is None:
+        return None, None
+
+    return latest_issue_time.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"), latest_issue_icao
+
+
+def postprocess_generated_html(output_file, features=None):
     # Add auto-refresh and header/notice to the HTML file
     with open(output_file, "r", encoding="utf-8") as f:
         html_content = f.read()
 
     last_deploy_time = _fetch_last_deploy_time_text()
+    latest_issue_time, latest_issue_icao = _extract_latest_issue_time_text_and_icao(features)
+    latest_issue_time_display = latest_issue_time or "unavailable"
+    if latest_issue_icao:
+        latest_issue_time_display = f"{latest_issue_time_display} ({latest_issue_icao})"
 
     # Centered alpha notice at the top, transparent background, with last deploy time
     alpha_notice_html = f'''
     <div style="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10001;font-family:Arial,sans-serif;font-size:15px;color:#222;background:rgba(255,255,255,0.55);padding:6px 18px 6px 16px;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,0.07);pointer-events:none;text-align:center;">
         Airport Color Code &mdash; <span style=\"color:#b36b00;\">alpha version</span><br/>
-        <span style="font-size:13px;color:#444;">Last Build: {last_deploy_time or 'unavailable'}</span>
+        <span style="font-size:13px;color:#444;">Codebase changed: {last_deploy_time or 'unavailable'}</span><br/>
+        <span style="font-size:13px;color:#444;">Last Issue Time: {latest_issue_time_display}</span>
     </div>
     '''
 
