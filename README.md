@@ -7,8 +7,10 @@ Generate and publish a color-coded TAF map for airports using data from https://
 - Fetches all available TAF locations from the MET Aviation API.
 - Fetches per-airport IWXXM payloads and parses:
 	- issue time
+	- forecast validity period (valid from / valid to) and whether the forecast is valid at current UTC time
 	- prevailing visibility
 	- cloud ceiling drivers (`VV`, `BKN`, `OVC`)
+	- CAVOK (`cloudAndVisibilityOK`) presence
 	- CB (cumulonimbus) and TCU (towering cumulus) presence in cloud layers
 - Converts units from IWXXM (meters, km, miles, feet) to:
 	- visibility in km
@@ -17,15 +19,19 @@ Generate and publish a color-coded TAF map for airports using data from https://
 	- `BLU`, `WHT`, `GRN`, `YLO1`, `YLO2`, `AMB`, `RED`
 - Renders an interactive Folium map with:
 	- color-coded airport markers
+	- gray marker (`#969696`) and label `Forecast Unavailable` when no current TAF is available
 	- tooltip with ICAO and color code
-	- popup with issue time, ceiling and visibility
+	- popup with issue time, color code, ceiling and visibility
+	- human-friendly unavailable reason in popup (`No current TAF`, `TAF not valid at current time`, `TAF data unavailable`)
+	- CAVOK-aware popup display (`Ceiling/VV: CAVOK`, `Visibility: CAVOK`) when CAVOK drives BLU conditions
 	- persistent ICAO labels
 	- CB/TCU symbol overlay for airports with convective cloud in TAF
 	- CB priority when both CB and TCU are present in the same forecast
 	- color-state legend panel
 - Adds a centered transparent status notice in generated HTML:
 	- `Airport Color Code — alpha version`
-	- `Last Build: <timestamp>` (fetched from latest commit on `main` for `thestig-aviation/airportcolorcode`)
+	- `Codebase changed: <timestamp>` (fetched from latest commit on `main` for `thestig-aviation/airportcolorcode`)
+	- `Last Issue Time: <timestamp> (<ICAO>)` from latest parsed airport issue time
 - Injects client-side auto-refresh logic into output HTML:
 	- countdown timer visible in lower-right corner
 	- automatic page reload at `:01`, `:16`, `:31`, `:46`
