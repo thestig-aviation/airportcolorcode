@@ -55,6 +55,22 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
+### 1b. Create and activate a local mamba environment (Python 3.13)
+
+```bash
+mamba create -n airportcolorcode313 python=3.13 -c conda-forge -y
+mamba activate airportcolorcode313
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+Rollback locally:
+
+```bash
+mamba deactivate
+mamba activate airportcolorcode
+```
+
 ### 2. Install dependencies
 
 ```bash
@@ -82,7 +98,7 @@ Current workflow behavior:
 	- manual run (`workflow_dispatch`)
 	- scheduled every 15 minutes (`*/15 * * * *`)
 - Build job:
-	- installs Python 3.11 + dependencies
+	- installs Python 3.13 + dependencies
 	- runs `airportcolorcode.py`
 	- copies `airport_color_codes.html` to `index.html`
 	- uploads Pages artifact
