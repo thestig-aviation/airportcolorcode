@@ -38,6 +38,10 @@ def build_map(features, cb_icon_uri, tcu_icon_uri):
                 z-index: 9999;">
         <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">Color State Criteria</h4>
         <div style="display: flex; align-items: center; margin: 4px 0;">
+            <div style="width: 20px; height: 20px; background-color: #969696; border: 1px solid #333; border-radius: 50%; margin-right: 8px;"></div>
+            <span><strong>GRAY:</strong> Forecast Unavailable (not valid now)</span>
+        </div>
+        <div style="display: flex; align-items: center; margin: 4px 0;">
             <div style="width: 20px; height: 20px; background-color: #FF0000; border: 1px solid #333; border-radius: 50%; margin-right: 8px;"></div>
             <span><strong>RED:</strong> &lt;200 ft or &lt;0.8 km</span>
         </div>
@@ -90,22 +94,32 @@ def build_map(features, cb_icon_uri, tcu_icon_uri):
             has_cb = properties.get("parsedHasCb", False)
             has_tcu = properties.get("parsedHasTcu", False)
             has_cavok = properties.get("parsedHasCavok", False)
+            forecast_available_now = properties.get("parsedForecastAvailableNow", True)
+            forecast_unavailable_reason = properties.get("parsedForecastUnavailableReason") or "Unknown reason"
 
             ceiling_ft, visibility_km, ceiling_source = parse_conditions(feature)
-            color_code = get_colour_state(ceiling_ft, visibility_km)
-            hex_color = COLOUR_STATE_COLORS[color_code]
-
-            cavok_driven = has_cavok and ceiling_ft is None and visibility_km is None
-            ceiling_display = "CAVOK" if cavok_driven else (f"{ceiling_ft} ft" if ceiling_ft is not None else "N/A ft")
-            visibility_display = "CAVOK" if cavok_driven else (f"{visibility_km} km" if visibility_km is not None else "N/A km")
+            if forecast_available_now:
+                color_code = get_colour_state(ceiling_ft, visibility_km)
+                hex_color = COLOUR_STATE_COLORS[color_code]
+                cavok_driven = has_cavok and ceiling_ft is None and visibility_km is None
+                ceiling_display = "CAVOK" if cavok_driven else (f"{ceiling_ft} ft" if ceiling_ft is not None else "N/A ft")
+                visibility_display = "CAVOK" if cavok_driven else (f"{visibility_km} km" if visibility_km is not None else "N/A km")
+                color_label = color_code
+            else:
+                hex_color = "#969696"
+                ceiling_display = "Forecast Unavailable"
+                visibility_display = "Forecast Unavailable"
+                color_label = "Forecast Unavailable"
 
             popup_text = (
                 f"<b>{name}</b><br>"
                 f"Issue time: {format_issue_time_utc(properties.get('parsedIssueTime')) or 'N/A'} UTC<br>"
-                f"Color Code: {color_code}<br>"
+                f"Color Code: {color_label}<br>"
                 f"Ceiling/VV: {ceiling_display}<br>"
                 f"Visibility: {visibility_display}"
             )
+            if not forecast_available_now:
+                popup_text += f"<br>Reason: {forecast_unavailable_reason}"
 
             folium.CircleMarker(
                 location=[lat, lon],
@@ -116,10 +130,10 @@ def build_map(features, cb_icon_uri, tcu_icon_uri):
                 fill_color=hex_color,
                 fill_opacity=1.0,
                 popup=folium.Popup(popup_text, max_width=200),
-                tooltip=f"{name}: {color_code}",
+                tooltip=f"{name}: {color_label}",
             ).add_to(m)
 
-            if has_cb:
+            if forecast_available_now and has_cb:
                 # CB takes priority over TCU if both are present.
                 folium.Marker(
                     location=[lat, lon],
@@ -137,7 +151,7 @@ def build_map(features, cb_icon_uri, tcu_icon_uri):
                         ),
                     ),
                 ).add_to(m)
-            elif has_tcu:
+            elif forecast_available_now and has_tcu:
                 folium.Marker(
                     location=[lat, lon],
                     icon=DivIcon(
