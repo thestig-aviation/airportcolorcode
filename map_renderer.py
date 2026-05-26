@@ -89,17 +89,22 @@ def build_map(features, cb_icon_uri, tcu_icon_uri):
             name = properties.get("ICAO") or properties.get("stationIdentification") or properties.get("name") or "Unknown"
             has_cb = properties.get("parsedHasCb", False)
             has_tcu = properties.get("parsedHasTcu", False)
+            has_cavok = properties.get("parsedHasCavok", False)
 
             ceiling_ft, visibility_km, ceiling_source = parse_conditions(feature)
             color_code = get_colour_state(ceiling_ft, visibility_km)
             hex_color = COLOUR_STATE_COLORS[color_code]
 
+            cavok_driven = has_cavok and ceiling_ft is None and visibility_km is None
+            ceiling_display = "CAVOK" if cavok_driven else (f"{ceiling_ft} ft" if ceiling_ft is not None else "N/A ft")
+            visibility_display = "CAVOK" if cavok_driven else (f"{visibility_km} km" if visibility_km is not None else "N/A km")
+
             popup_text = (
                 f"<b>{name}</b><br>"
                 f"Issue time: {format_issue_time_utc(properties.get('parsedIssueTime')) or 'N/A'} UTC<br>"
                 f"Color Code: {color_code}<br>"
-                f"Ceiling/VV: {ceiling_ft if ceiling_ft is not None else 'N/A'} ft<br>"
-                f"Visibility: {visibility_km if visibility_km is not None else 'N/A'} km"
+                f"Ceiling/VV: {ceiling_display}<br>"
+                f"Visibility: {visibility_display}"
             )
 
             folium.CircleMarker(

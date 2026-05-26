@@ -26,11 +26,11 @@ def _uom_to_ft(value, uom):
 
 
 def parse_iwxxm_conditions(xml_text):
-    """Parse IWXXM XML and return (issue time, ceiling ft, visibility km, has_cb, has_tcu, ceiling source)."""
+    """Parse IWXXM XML and return (issue time, ceiling ft, visibility km, has_cb, has_tcu, ceiling source, has_cavok)."""
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
-        return None, None, None, False, False, None
+        return None, None, None, False, False, None, False
 
     issue_time = None
     issue_time_elem = root.find(".//iwxxm:issueTime/gml:TimeInstant/gml:timePosition", IWXXM_NS)
@@ -63,6 +63,12 @@ def parse_iwxxm_conditions(xml_text):
 
     has_cb = False
     has_tcu = False
+    has_cavok = False
+
+    for forecast in root.findall(".//iwxxm:MeteorologicalAerodromeForecast", IWXXM_NS):
+        if (forecast.get("cloudAndVisibilityOK") or "").strip().lower() == "true":
+            has_cavok = True
+
     for layer in root.findall(".//iwxxm:CloudLayer", IWXXM_NS):
         amount_elem = layer.find("iwxxm:amount", IWXXM_NS)
         base_elem = layer.find("iwxxm:base", IWXXM_NS)
@@ -97,4 +103,4 @@ def parse_iwxxm_conditions(xml_text):
     ceiling_ft = None
     if ceiling_candidates:
         ceiling_source, ceiling_ft = min(ceiling_candidates, key=lambda item: item[1])
-    return issue_time, ceiling_ft, visibility_km, has_cb, has_tcu, ceiling_source
+    return issue_time, ceiling_ft, visibility_km, has_cb, has_tcu, ceiling_source, has_cavok
