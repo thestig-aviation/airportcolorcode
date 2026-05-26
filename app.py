@@ -24,5 +24,5 @@ def main():
     m = build_map(features, cb_icon_uri, tcu_icon_uri)
     m.save(str(DEFAULT_OUTPUT_FILE))
 
-    postprocess_generated_html(DEFAULT_OUTPUT_FILE)
+    postprocess_generated_html(DEFAULT_OUTPUT_FILE, features)
     print(f"Map saved to {DEFAULT_OUTPUT_FILE} with auto-refresh enabled")
