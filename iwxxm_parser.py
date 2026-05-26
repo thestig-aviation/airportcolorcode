@@ -1,4 +1,5 @@
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 
 from config import IWXXM_NS
 
@@ -25,17 +26,49 @@ def _uom_to_ft(value, uom):
     return value
 
 
+def _parse_iso_utc(text):
+    if not text:
+        return None
+    normalized_text = text.strip().replace("Z", "+00:00")
+    try:
+        parsed_time = datetime.fromisoformat(normalized_text)
+    except ValueError:
+        return None
+
+    if parsed_time.tzinfo is None:
+        parsed_time = parsed_time.replace(tzinfo=timezone.utc)
+    return parsed_time.astimezone(timezone.utc)
+
+
 def parse_iwxxm_conditions(xml_text):
-    """Parse IWXXM XML and return (issue time, ceiling ft, visibility km, has_cb, has_tcu, ceiling source, has_cavok)."""
+    """Parse IWXXM XML and return weather fields plus now-availability status."""
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
-        return None, None, None, False, False, None, False
+        return None, None, None, False, False, None, False, False, "TAF data unavailable"
 
     issue_time = None
     issue_time_elem = root.find(".//iwxxm:issueTime/gml:TimeInstant/gml:timePosition", IWXXM_NS)
     if issue_time_elem is not None and (issue_time_elem.text or "").strip():
         issue_time = issue_time_elem.text.strip()
+
+    valid_from = None
+    valid_to = None
+    valid_from_elem = root.find(".//iwxxm:validPeriod/gml:TimePeriod/gml:beginPosition", IWXXM_NS)
+    valid_to_elem = root.find(".//iwxxm:validPeriod/gml:TimePeriod/gml:endPosition", IWXXM_NS)
+    if valid_from_elem is not None:
+        valid_from = _parse_iso_utc(valid_from_elem.text)
+    if valid_to_elem is not None:
+        valid_to = _parse_iso_utc(valid_to_elem.text)
+
+    now_utc = datetime.now(timezone.utc)
+    forecast_available_now = bool(valid_from and valid_to and valid_from <= now_utc <= valid_to)
+    if forecast_available_now:
+        forecast_unavailable_reason = None
+    elif valid_from is None or valid_to is None:
+        forecast_unavailable_reason = "No current TAF"
+    else:
+        forecast_unavailable_reason = "TAF not valid at current time"
 
     vis_values = []
     for vis in root.findall(".//iwxxm:prevailingVisibility", IWXXM_NS):
@@ -103,4 +136,14 @@ def parse_iwxxm_conditions(xml_text):
     ceiling_ft = None
     if ceiling_candidates:
         ceiling_source, ceiling_ft = min(ceiling_candidates, key=lambda item: item[1])
-    return issue_time, ceiling_ft, visibility_km, has_cb, has_tcu, ceiling_source, has_cavok
+    return (
+        issue_time,
+        ceiling_ft,
+        visibility_km,
+        has_cb,
+        has_tcu,
+        ceiling_source,
+        has_cavok,
+        forecast_available_now,
+        forecast_unavailable_reason,
+    )
