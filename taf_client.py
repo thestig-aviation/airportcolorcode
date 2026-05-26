@@ -31,13 +31,14 @@ def enrich_features_with_iwxxm(features):
                 timeout=REQUEST_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
-            issue_time, ceiling_ft, visibility_km, has_cb, has_tcu, ceiling_source = parse_iwxxm_conditions(response.text)
+            issue_time, ceiling_ft, visibility_km, has_cb, has_tcu, ceiling_source, has_cavok = parse_iwxxm_conditions(response.text)
             properties["parsedIssueTime"] = issue_time
             properties["parsedCeilingFt"] = ceiling_ft
             properties["parsedVisibilityKm"] = visibility_km
             properties["parsedHasCb"] = has_cb
             properties["parsedHasTcu"] = has_tcu
             properties["parsedCeilingSource"] = ceiling_source
+            properties["parsedHasCavok"] = has_cavok
         except requests.RequestException:
             properties["parsedIssueTime"] = None
             properties["parsedCeilingFt"] = None
@@ -45,3 +46,4 @@ def enrich_features_with_iwxxm(features):
             properties["parsedHasCb"] = False
             properties["parsedHasTcu"] = False
             properties["parsedCeilingSource"] = None
+            properties["parsedHasCavok"] = False
