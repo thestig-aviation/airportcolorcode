@@ -19,7 +19,14 @@ def ensure_local_tcu_icon(tcu_icon_path, tcu_icon_local_name):
     return tcu_icon_local_name
 
 
-def build_map(features, cb_icon_uri, tcu_icon_uri):
+def ensure_local_ts_icon(ts_icon_path, ts_icon_local_name):
+    """Return the local TS icon path used by the generated HTML."""
+    if not ts_icon_path.exists():
+        raise FileNotFoundError(f"Missing TS icon asset: {ts_icon_path}")
+    return ts_icon_local_name
+
+
+def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
     m = folium.Map(location=[65, 15], zoom_start=4)
 
     # Add legend to the map
@@ -71,6 +78,11 @@ def build_map(features, cb_icon_uri, tcu_icon_uri):
         </div>
         <div style="margin-top: 8px; font-size: 11px; color: #666; border-top: 1px solid #ddd; padding-top: 6px;">
             <div style="display: flex; align-items: center; margin-top: 4px;">
+                <img src="''' + ts_icon_uri + '''"
+                     width="23" height="23" alt="TS" style="margin-right: 6px; border: 2px solid #111; border-radius: 50%; padding: 2px; background: white; box-shadow:0 1px 4px rgba(0,0,0,0.45);"/>
+                <span>Thunderstorm (TS) in TAF</span>
+            </div>
+            <div style="display: flex; align-items: center; margin-top: 4px;">
                  <img src="''' + cb_icon_uri + '''" 
                      width="23" height="23" alt="CB" style="margin-right: 6px; border: 2px solid #111; border-radius: 50%; padding: 2px; background: white; box-shadow:0 1px 4px rgba(0,0,0,0.45);"/>
                 <span>Cumulonimbus (CB) in TAF</span>
@@ -91,6 +103,7 @@ def build_map(features, cb_icon_uri, tcu_icon_uri):
             lon, lat = coords[0], coords[1]
             properties = feature.get("properties", {})
             name = properties.get("ICAO") or properties.get("stationIdentification") or properties.get("name") or "Unknown"
+            has_ts = properties.get("parsedHasTs", False)
             has_cb = properties.get("parsedHasCb", False)
             has_tcu = properties.get("parsedHasTcu", False)
             has_cavok = properties.get("parsedHasCavok", False)
@@ -133,8 +146,25 @@ def build_map(features, cb_icon_uri, tcu_icon_uri):
                 tooltip=f"{name}: {color_label}",
             ).add_to(m)
 
-            if forecast_available_now and has_cb:
-                # CB takes priority over TCU if both are present.
+            if forecast_available_now and has_ts:
+                folium.Marker(
+                    location=[lat, lon],
+                    icon=DivIcon(
+                        icon_size=(40, 40),
+                        icon_anchor=(0, 0),
+                        html=(
+                            '<div style="position:relative;left:-30px;top:-34px;'
+                            'width:30px;height:30px;display:flex;align-items:center;justify-content:center;'
+                            'background:rgba(255,255,255,0.96);border:2px solid #111;border-radius:50%;'
+                            'box-shadow:0 1px 4px rgba(0,0,0,0.45);" title="Thunderstorm (TS) in TAF">'
+                            f'<img src="{ts_icon_uri}" '
+                            'width="23" height="23" alt="TS" style="display:block;"/>'
+                            '</div>'
+                        ),
+                    ),
+                ).add_to(m)
+            elif forecast_available_now and has_cb:
+                # TS has highest priority; CB then takes priority over TCU.
                 folium.Marker(
                     location=[lat, lon],
                     icon=DivIcon(
