@@ -34,6 +34,7 @@ def enrich_features_with_iwxxm(features):
                 properties["parsedIssueTime"] = None
                 properties["parsedCeilingFt"] = None
                 properties["parsedVisibilityKm"] = None
+                properties["parsedHasTs"] = False
                 properties["parsedHasCb"] = False
                 properties["parsedHasTcu"] = False
                 properties["parsedCeilingSource"] = None
@@ -47,6 +48,7 @@ def enrich_features_with_iwxxm(features):
                 issue_time,
                 ceiling_ft,
                 visibility_km,
+                has_ts,
                 has_cb,
                 has_tcu,
                 ceiling_source,
@@ -57,6 +59,7 @@ def enrich_features_with_iwxxm(features):
             properties["parsedIssueTime"] = issue_time
             properties["parsedCeilingFt"] = ceiling_ft
             properties["parsedVisibilityKm"] = visibility_km
+            properties["parsedHasTs"] = has_ts
             properties["parsedHasCb"] = has_cb
             properties["parsedHasTcu"] = has_tcu
             properties["parsedCeilingSource"] = ceiling_source
@@ -67,6 +70,7 @@ def enrich_features_with_iwxxm(features):
             properties["parsedIssueTime"] = None
             properties["parsedCeilingFt"] = None
             properties["parsedVisibilityKm"] = None
+            properties["parsedHasTs"] = False
             properties["parsedHasCb"] = False
             properties["parsedHasTcu"] = False
             properties["parsedCeilingSource"] = None

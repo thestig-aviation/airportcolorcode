@@ -11,7 +11,7 @@ Generate and publish a color-coded TAF map for airports using data from https://
 	- prevailing visibility
 	- cloud ceiling drivers (`VV`, `BKN`, `OVC`)
 	- CAVOK (`cloudAndVisibilityOK`) presence
-	- CB (cumulonimbus) and TCU (towering cumulus) presence in cloud layers
+	- TS (thunderstorm) weather presence plus CB (cumulonimbus) and TCU (towering cumulus)
 - Converts units from IWXXM (meters, km, miles, feet) to:
 	- visibility in km
 	- ceiling in ft
@@ -25,8 +25,8 @@ Generate and publish a color-coded TAF map for airports using data from https://
 	- human-friendly unavailable reason in popup (`No current TAF`, `TAF not valid at current time`, `TAF data unavailable`)
 	- CAVOK-aware popup display (`Ceiling/VV: CAVOK`, `Visibility: CAVOK`) when CAVOK drives BLU conditions
 	- persistent ICAO labels
-	- CB/TCU symbol overlay for airports with convective cloud in TAF
-	- CB priority when both CB and TCU are present in the same forecast
+	- TS/CB/TCU symbol overlay for airports with convective weather in TAF
+	- Priority order when multiple are present: TS, then CB, then TCU
 	- color-state legend panel
 - Adds a centered transparent status notice in generated HTML:
 	- `Airport Color Code — alpha version`
@@ -50,6 +50,7 @@ Generate and publish a color-coded TAF map for airports using data from https://
 - `airport_color_codes.html`: Generated map output.
 - `cb_symbol.png`: Local icon asset used for CB markers.
 - `tcu_symbol.png`: Local icon asset used for TCU markers.
+- `ts_symbol.png`: Local icon asset used for TS markers.
 - `.github/workflows/publish-map.yml`: GitHub Actions workflow for build and Pages deployment.
 
 ## Quick Start

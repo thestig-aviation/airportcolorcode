@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+import re
 
 from config import IWXXM_NS
 
@@ -40,12 +41,50 @@ def _parse_iso_utc(text):
     return parsed_time.astimezone(timezone.utc)
 
 
+def _is_thunderstorm_code(value):
+    if not value:
+        return False
+
+    normalized_value = value.strip().upper()
+    if not normalized_value:
+        return False
+
+    if "THUNDER" in normalized_value:
+        return True
+
+    # Handle common codes such as TS, TSRA, VCTS, +TSRA across text and URI-style values.
+    return bool(re.search(r"(^|[^A-Z0-9])TS([A-Z0-9]{0,5})([^A-Z0-9]|$)", normalized_value))
+
+
+def _find_has_thunderstorm(root):
+    weather_paths = (
+        ".//iwxxm:weather",
+        ".//iwxxm:forecastWeather",
+        ".//iwxxm:AerodromeForecastWeather",
+    )
+    xlink_href_key = f"{{{IWXXM_NS['xlink']}}}href"
+    xlink_title_key = f"{{{IWXXM_NS['xlink']}}}title"
+
+    for path in weather_paths:
+        for weather_elem in root.findall(path, IWXXM_NS):
+            candidates = []
+            candidates.extend(weather_elem.attrib.values())
+            candidates.append(weather_elem.get(xlink_href_key, ""))
+            candidates.append(weather_elem.get(xlink_title_key, ""))
+            candidates.append(weather_elem.text or "")
+
+            for candidate in candidates:
+                if _is_thunderstorm_code(candidate):
+                    return True
+    return False
+
+
 def parse_iwxxm_conditions(xml_text):
     """Parse IWXXM XML and return weather fields plus now-availability status."""
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
-        return None, None, None, False, False, None, False, False, "TAF data unavailable"
+        return None, None, None, False, False, False, None, False, False, "TAF data unavailable"
 
     issue_time = None
     issue_time_elem = root.find(".//iwxxm:issueTime/gml:TimeInstant/gml:timePosition", IWXXM_NS)
@@ -96,6 +135,7 @@ def parse_iwxxm_conditions(xml_text):
 
     has_cb = False
     has_tcu = False
+    has_ts = _find_has_thunderstorm(root)
     has_cavok = False
 
     for forecast in root.findall(".//iwxxm:MeteorologicalAerodromeForecast", IWXXM_NS):
@@ -140,6 +180,7 @@ def parse_iwxxm_conditions(xml_text):
         issue_time,
         ceiling_ft,
         visibility_km,
+        has_ts,
         has_cb,
         has_tcu,
         ceiling_source,
