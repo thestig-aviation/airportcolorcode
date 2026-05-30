@@ -4,6 +4,20 @@ import re
 
 from config import COLOUR_STATE_COLORS, UNAVAILABLE_COLOR
 
+# Numeric rank for each colour state: higher = better conditions.
+COLOUR_STATE_RANK = {"RED": 0, "AMB": 1, "YLO2": 2, "YLO1": 3, "GRN": 4, "WHT": 5, "BLU": 6}
+
+# Ordered threshold table used by get_colour_state.
+# Each entry: (ceiling_ft_threshold, visibility_km_threshold, state).
+_COLOUR_STATE_THRESHOLDS = [
+    (200,  0.8,  "RED"),
+    (300,  1.6,  "AMB"),
+    (500,  2.5,  "YLO2"),
+    (700,  3.7,  "YLO1"),
+    (1500, 5.0,  "GRN"),
+    (2500, 8.0,  "WHT"),
+]
+
 
 def _is_thunderstorm_code(value):
     """Check if a weather code value indicates thunderstorms (TS/TSRA/VCTS/+TSRA/thunder)."""
@@ -74,30 +88,20 @@ def format_issue_time_utc(issue_time_text):
 def get_colour_state(ceiling_ft, visibility_km):
     """Return the UK/European aviation colour state for given ceiling and visibility.
 
-    Implements the standard 7-level scale: BLU, WHT, GRN, YLO1, YLO2, AMB, RED.
+    Uses _COLOUR_STATE_THRESHOLDS for a table-driven lookup ordered by COLOUR_STATE_RANK.
     None inputs are treated as unlimited (best-case). Ceiling in ft, visibility in km.
     """
-    if ceiling_ft is None:
-        ceiling_ft = float("inf")
-    if visibility_km is None:
-        visibility_km = float("inf")
+    ceiling_ft = float("inf") if ceiling_ft is None else ceiling_ft
+    visibility_km = float("inf") if visibility_km is None else visibility_km
+    for ceil_thresh, vis_thresh, state in _COLOUR_STATE_THRESHOLDS:
+        if ceiling_ft < ceil_thresh or visibility_km < vis_thresh:
+            return state
+    return "BLU"
 
-    # UK/European Colour State criteria (cloud ft / visibility km)
-    # Boundaries are inclusive to the better category (handled by < checks).
-    if ceiling_ft < 200 or visibility_km < 0.8:
-        return "RED"
-    elif ceiling_ft < 300 or visibility_km < 1.6:
-        return "AMB"
-    elif ceiling_ft < 500 or visibility_km < 2.5:
-        return "YLO2"
-    elif ceiling_ft < 700 or visibility_km < 3.7:
-        return "YLO1"
-    elif ceiling_ft < 1500 or visibility_km < 5:
-        return "GRN"
-    elif ceiling_ft < 2500 or visibility_km < 8:
-        return "WHT"
-    else:
-        return "BLU"
+
+def colour_state_hex(state_code):
+    """Return the hex fill colour for a colour state code."""
+    return COLOUR_STATE_COLORS[state_code]
 
 
 def parse_conditions(feature):
@@ -168,3 +172,4 @@ def get_forecast_display_info(forecast_available_now, ceiling_ft, visibility_km,
         color_label = "Forecast Unavailable"
     
     return hex_color, color_label, ceiling_display, visibility_display
+

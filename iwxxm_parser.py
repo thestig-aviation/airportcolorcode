@@ -4,16 +4,29 @@ from collections import namedtuple
 from datetime import datetime, timezone
 
 from config import IWXXM_NS
-from logic import _is_thunderstorm_code, _is_cb_code, _is_tcu_code
+from logic import _is_thunderstorm_code, _is_cb_code, _is_tcu_code, get_colour_state, COLOUR_STATE_RANK
+
+ForecastPeriod = namedtuple("ForecastPeriod", [
+    "begin",           # datetime (UTC) or None
+    "end",             # datetime (UTC) or None
+    "change_type",     # "BASE", "TEMPO", "BECMG", "PROB30", "PROB40", ...
+    "colour_state",    # "BLU", "WHT", "GRN", etc.
+    "rank",            # 0 (RED) .. 6 (BLU)
+    "ceiling_ft",      # float or None
+    "visibility_km",   # float or None
+    "ceiling_source",  # "VV", "BKN", "OVC", or None
+    "is_cavok",        # bool
+    "has_ts",          # bool: thunderstorm in this period
+    "has_cb",          # bool: cumulonimbus in this period
+    "has_tcu",         # bool: towering cumulus in this period
+])
 
 ParsedConditions = namedtuple("ParsedConditions", [
     "issue_time",
-    "ceiling_ft",
-    "visibility_km",
+    "forecast_periods",  # list of ForecastPeriod
     "has_ts",
     "has_cb",
     "has_tcu",
-    "ceiling_source",
     "has_cavok",
     "forecast_available_now",
     "forecast_unavailable_reason",
@@ -80,15 +93,102 @@ def _find_has_thunderstorm(root):
     return False
 
 
+def _parse_single_period(forecast_el, taf_begin, taf_end):
+    """Parse one MeteorologicalAerodromeForecast element into a ForecastPeriod."""
+    change_indicator = (forecast_el.get("changeIndicator") or "").strip()
+    change_type = change_indicator if change_indicator else "BASE"
+
+    # Time bounds: use inline phenomenonTime TimePeriod if present, else TAF valid period.
+    begin, end = taf_begin, taf_end
+    time_period = forecast_el.find("iwxxm:phenomenonTime/gml:TimePeriod", IWXXM_NS)
+    if time_period is not None:
+        b_el = time_period.find("gml:beginPosition", IWXXM_NS)
+        e_el = time_period.find("gml:endPosition", IWXXM_NS)
+        begin = _parse_iso_utc((b_el.text or "") if b_el is not None else "") or taf_begin
+        end = _parse_iso_utc((e_el.text or "") if e_el is not None else "") or taf_end
+
+    is_cavok = (forecast_el.get("cloudAndVisibilityOK") or "").strip().lower() == "true"
+    if is_cavok:
+        return ForecastPeriod(
+            begin=begin, end=end, change_type=change_type,
+            colour_state="BLU", rank=COLOUR_STATE_RANK["BLU"],
+            ceiling_ft=None, visibility_km=None, ceiling_source=None, is_cavok=True,
+            has_ts=False, has_cb=False, has_tcu=False,
+        )
+
+    # Visibility
+    vis_km = None
+    vis_el = forecast_el.find("iwxxm:prevailingVisibility", IWXXM_NS)
+    if vis_el is not None and (vis_el.text or "").strip():
+        try:
+            vis_km = _uom_to_km(float(vis_el.text.strip()), vis_el.get("uom", "m"))
+        except ValueError:
+            pass
+
+    # Ceiling: vertical visibility takes precedence over cloud layers.
+    ceiling_ft = None
+    ceiling_source = None
+    vv_el = forecast_el.find(".//iwxxm:verticalVisibility", IWXXM_NS)
+    if vv_el is not None and (vv_el.text or "").strip():
+        try:
+            vv_ft = _uom_to_ft(float(vv_el.text.strip()), vv_el.get("uom", "[ft_i]"))
+            if vv_ft is not None:
+                ceiling_ft, ceiling_source = vv_ft, "VV"
+        except ValueError:
+            pass
+
+    # BKN/OVC cloud layers — lowest base wins.
+    for layer in forecast_el.findall(".//iwxxm:CloudLayer", IWXXM_NS):
+        amt_el = layer.find("iwxxm:amount", IWXXM_NS)
+        base_el = layer.find("iwxxm:base", IWXXM_NS)
+        if amt_el is None or base_el is None or not (base_el.text or "").strip():
+            continue
+        amt_href = amt_el.get(f"{{{IWXXM_NS['xlink']}}}href", "")
+        amt_code = amt_href.rsplit("/", 1)[-1].upper() if amt_href else ""
+        if amt_code not in {"BKN", "OVC"}:
+            continue
+        try:
+            base_ft = _uom_to_ft(float(base_el.text.strip()), base_el.get("uom", "[ft_i]"))
+        except ValueError:
+            continue
+        if base_ft is not None and (ceiling_ft is None or base_ft < ceiling_ft):
+            ceiling_ft, ceiling_source = base_ft, amt_code
+
+    colour_state = get_colour_state(ceiling_ft, vis_km)
+
+    # Convective weather detection within this period.
+    has_ts = _find_has_thunderstorm(forecast_el)
+    has_cb = False
+    has_tcu = False
+    _xlink_href_key = f"{{{IWXXM_NS['xlink']}}}href"
+    for _layer in forecast_el.findall(".//iwxxm:CloudLayer", IWXXM_NS):
+        _ct = _layer.find("iwxxm:cloudType", IWXXM_NS)
+        if _ct is None:
+            continue
+        _type = (_ct.text or "").strip() or _ct.get(_xlink_href_key, "").rsplit("/", 1)[-1]
+        if _is_cb_code(_type):
+            has_cb = True
+        if _is_tcu_code(_type):
+            has_tcu = True
+
+    return ForecastPeriod(
+        begin=begin, end=end, change_type=change_type,
+        colour_state=colour_state, rank=COLOUR_STATE_RANK[colour_state],
+        ceiling_ft=ceiling_ft, visibility_km=vis_km,
+        ceiling_source=ceiling_source, is_cavok=False,
+        has_ts=has_ts, has_cb=has_cb, has_tcu=has_tcu,
+    )
+
+
 def parse_iwxxm_conditions(xml_text):
-    """Parse IWXXM XML and return weather fields plus now-availability status."""
+    """Parse IWXXM XML and return a ParsedConditions with per-period forecast data."""
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
         return ParsedConditions(
-            issue_time=None, ceiling_ft=None, visibility_km=None,
+            issue_time=None, forecast_periods=[],
             has_ts=False, has_cb=False, has_tcu=False,
-            ceiling_source=None, has_cavok=False,
+            has_cavok=False,
             forecast_available_now=False, forecast_unavailable_reason="TAF data unavailable",
         )
 
@@ -97,103 +197,41 @@ def parse_iwxxm_conditions(xml_text):
     if issue_time_elem is not None and (issue_time_elem.text or "").strip():
         issue_time = issue_time_elem.text.strip()
 
-    valid_from = None
-    valid_to = None
+    taf_begin = None
+    taf_end = None
     valid_from_elem = root.find(".//iwxxm:validPeriod/gml:TimePeriod/gml:beginPosition", IWXXM_NS)
     valid_to_elem = root.find(".//iwxxm:validPeriod/gml:TimePeriod/gml:endPosition", IWXXM_NS)
     if valid_from_elem is not None:
-        valid_from = _parse_iso_utc(valid_from_elem.text)
+        taf_begin = _parse_iso_utc(valid_from_elem.text)
     if valid_to_elem is not None:
-        valid_to = _parse_iso_utc(valid_to_elem.text)
+        taf_end = _parse_iso_utc(valid_to_elem.text)
 
     now_utc = datetime.now(timezone.utc)
-    forecast_available_now = bool(valid_from and valid_to and valid_from <= now_utc <= valid_to)
+    forecast_available_now = bool(taf_begin and taf_end and taf_begin <= now_utc <= taf_end)
     if forecast_available_now:
         forecast_unavailable_reason = None
-    elif valid_from is None or valid_to is None:
+    elif taf_begin is None or taf_end is None:
         forecast_unavailable_reason = "No current TAF"
     else:
         forecast_unavailable_reason = "TAF not valid at current time"
 
-    vis_values = []
-    for vis in root.findall(".//iwxxm:prevailingVisibility", IWXXM_NS):
-        try:
-            vis_value = float((vis.text or "").strip())
-        except (TypeError, ValueError):
-            continue
-        vis_km = _uom_to_km(vis_value, vis.get("uom", "m"))
-        if vis_km is not None:
-            vis_values.append(vis_km)
+    # Parse each forecast period independently; colour state is computed per period.
+    forecast_periods = [
+        _parse_single_period(el, taf_begin, taf_end)
+        for el in root.findall(".//iwxxm:MeteorologicalAerodromeForecast", IWXXM_NS)
+    ]
 
-    significant_amounts = {"VV", "BKN", "OVC"}
-    ceiling_candidates = []
+    has_cavok = any(p.is_cavok for p in forecast_periods)
+    has_ts = any(p.has_ts for p in forecast_periods)
+    has_cb = any(p.has_cb for p in forecast_periods)
+    has_tcu = any(p.has_tcu for p in forecast_periods)
 
-    for vv in root.findall(".//iwxxm:verticalVisibility", IWXXM_NS):
-        if not (vv.text or "").strip():
-            continue
-        try:
-            vv_value = float(vv.text.strip())
-        except ValueError:
-            continue
-        vv_ft = _uom_to_ft(vv_value, vv.get("uom", "[ft_i]"))
-        if vv_ft is not None:
-            ceiling_candidates.append(("VV", vv_ft))
-
-    has_cb = False
-    has_tcu = False
-    has_ts = _find_has_thunderstorm(root)
-    has_cavok = False
-
-    for forecast in root.findall(".//iwxxm:MeteorologicalAerodromeForecast", IWXXM_NS):
-        if (forecast.get("cloudAndVisibilityOK") or "").strip().lower() == "true":
-            has_cavok = True
-
-    for layer in root.findall(".//iwxxm:CloudLayer", IWXXM_NS):
-        amount_elem = layer.find("iwxxm:amount", IWXXM_NS)
-        base_elem = layer.find("iwxxm:base", IWXXM_NS)
-        cloud_type_elem = layer.find("iwxxm:cloudType", IWXXM_NS)
-        if cloud_type_elem is not None:
-            cloud_type_href = cloud_type_elem.get(f"{{{IWXXM_NS['xlink']}}}href", "")
-            cloud_type_text = (cloud_type_elem.text or "").strip()
-            
-            # Check both href (e.g., ".../CB") and text content
-            type_to_check = cloud_type_text or (cloud_type_href.rsplit("/", 1)[-1] if cloud_type_href else "")
-            
-            if _is_cb_code(type_to_check):
-                has_cb = True
-            if _is_tcu_code(type_to_check):
-                has_tcu = True
-
-        if amount_elem is None or base_elem is None or not (base_elem.text or "").strip():
-            continue
-
-        amount_href = amount_elem.get(f"{{{IWXXM_NS['xlink']}}}href", "")
-        amount_code = amount_href.rsplit("/", 1)[-1].upper() if amount_href else ""
-        if amount_code not in significant_amounts:
-            continue
-
-        try:
-            base_value = float(base_elem.text.strip())
-        except ValueError:
-            continue
-        base_ft = _uom_to_ft(base_value, base_elem.get("uom", "[ft_i]"))
-        if base_ft is not None:
-            ceiling_candidates.append((amount_code, base_ft))
-
-    # Use worst visibility and lowest significant cloud base from the TAF.
-    visibility_km = min(vis_values) if vis_values else None
-    ceiling_source = None
-    ceiling_ft = None
-    if ceiling_candidates:
-        ceiling_source, ceiling_ft = min(ceiling_candidates, key=lambda item: item[1])
     return ParsedConditions(
         issue_time=issue_time,
-        ceiling_ft=ceiling_ft,
-        visibility_km=visibility_km,
+        forecast_periods=forecast_periods,
         has_ts=has_ts,
         has_cb=has_cb,
         has_tcu=has_tcu,
-        ceiling_source=ceiling_source,
         has_cavok=has_cavok,
         forecast_available_now=forecast_available_now,
         forecast_unavailable_reason=forecast_unavailable_reason,

@@ -8,6 +8,7 @@ from logic import (
     get_priority_convective_symbol,
     get_convective_symbol_title,
     get_forecast_display_info,
+    colour_state_hex,
 )
 
 
@@ -96,7 +97,17 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
             <div style="width: 20px; height: 20px; background-color: #0000FF; border: 1px solid #333; border-radius: 50%; margin-right: 8px;"></div>
             <span><strong>BLU:</strong> ≥2500 ft and ≥8 km</span>
         </div>
-        <div style="margin-top: 8px; font-size: 11px; color: #666; border-top: 1px solid #ddd; padding-top: 6px;">
+        <div style="margin-top: 8px; font-size: 11px; color: #555; border-top: 1px solid #ddd; padding-top: 6px;">
+            <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                <div style="width: 20px; height: 20px; border-radius: 50%; border: 3px solid #0000FF; margin-right: 8px; flex-shrink: 0;"></div>
+                <span><strong>Outer ring:</strong> best forecast state</span>
+            </div>
+            <div style="display: flex; align-items: center; margin-bottom: 6px;">
+                <div style="width: 20px; height: 20px; border-radius: 50%; background-color: #0000FF; border: 1px solid #333; margin-right: 8px; flex-shrink: 0;"></div>
+                <span><strong>Inner fill:</strong> worst forecast state</span>
+            </div>
+        </div>
+        <div style="margin-top: 4px; font-size: 11px; color: #666; border-top: 1px solid #ddd; padding-top: 6px;">
             <div style="display: flex; align-items: center; margin-top: 4px;">
                 <img src="''' + ts_icon_uri + '''"
                      width="23" height="23" alt="TS" style="margin-right: 6px; border: 2px solid #111; border-radius: 50%; padding: 2px; background: white; box-shadow:0 1px 4px rgba(0,0,0,0.45);"/>
@@ -135,15 +146,30 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
                 forecast_available_now, ceiling_ft, visibility_km, has_cavok
             )
 
+            best_hex_color = None
+            best_color_label = None
+            if forecast_available_now:
+                _periods = properties.get("parsedForecastPeriods") or []
+                if _periods:
+                    _best = max(_periods, key=lambda p: p["rank"])
+                    best_color_label = _best["colourState"]
+                    best_hex_color = colour_state_hex(best_color_label)
+
             popup_text = (
                 f"<b>{name}</b><br>"
                 f"Issue time: {format_issue_time_utc(properties.get('parsedIssueTime')) or 'N/A'} UTC<br>"
-                f"Color Code: {color_label}<br>"
-                f"Ceiling/VV: {ceiling_display}<br>"
+                f"Worst state: {color_label}<br>"
+                + (f"Best state: {best_color_label}<br>" if best_color_label else "")
+                + f"Ceiling/VV: {ceiling_display}<br>"
                 f"Visibility: {visibility_display}"
             )
             if not forecast_available_now:
                 popup_text += f"<br>Reason: {forecast_unavailable_reason}"
+
+            tooltip_text = (
+                f"{name}: {color_label} / {best_color_label}"
+                if best_color_label else f"{name}: {color_label}"
+            )
 
             folium.CircleMarker(
                 location=[lat, lon],
@@ -153,9 +179,20 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
                 fill=True,
                 fill_color=hex_color,
                 fill_opacity=1.0,
-                popup=folium.Popup(popup_text, max_width=200),
-                tooltip=f"{name}: {color_label}",
+                popup=folium.Popup(popup_text, max_width=220),
+                tooltip=tooltip_text,
             ).add_to(m)
+
+            # Outer ring showing best forecast state (drawn on top so stroke is visible)
+            if forecast_available_now and best_hex_color:
+                folium.CircleMarker(
+                    location=[lat, lon],
+                    radius=16,
+                    color=best_hex_color,
+                    weight=5,
+                    fill=False,
+                    tooltip=tooltip_text,
+                ).add_to(m)
 
             # Render highest-priority convective symbol if forecast is current
             if forecast_available_now:
