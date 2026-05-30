@@ -267,7 +267,12 @@ def _build_time_slider_html(taf_start, taf_end, airport_periods):
 
         document.getElementById('taf-slider-start').addEventListener('input', function() {{ updateSlider('start'); }});
         document.getElementById('taf-slider-end').addEventListener('input',   function() {{ updateSlider('end'); }});
+        // Update slider labels and track fill immediately (DOM elements are present).
         updateSlider(null);
+        // Leaflet marker objects are created in the <script> block that Folium places
+        // AFTER </body>, so they do not yet exist when the IIFE runs.  Defer the
+        // marker-opacity pass to window.load, by which time all markers exist.
+        window.addEventListener('load', updateMapForWindow);
     }})();
     </script>
     '''
