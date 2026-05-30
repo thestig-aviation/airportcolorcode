@@ -53,21 +53,6 @@ def _is_tcu_code(value):
     return normalized_value == "TCU" or "TOWERING" in normalized_value
 
 
-def get_priority_convective_symbol(has_ts, has_cb, has_tcu):
-    """Determine which convective symbol should be displayed.
-    
-    Priority order: TS > CB > TCU
-    Returns: "TS", "CB", "TCU", or None
-    """
-    if has_ts:
-        return "TS"
-    elif has_cb:
-        return "CB"
-    elif has_tcu:
-        return "TCU"
-    return None
-
-
 def format_issue_time_utc(issue_time_text):
     """Format an ISO 8601 issue time string as HH:MM UTC. Returns None if input is absent."""
     if not issue_time_text:

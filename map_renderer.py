@@ -8,7 +8,6 @@ from config import COLOUR_STATE_COLORS, UNAVAILABLE_COLOR
 from logic import (
     format_issue_time_utc,
     parse_conditions,
-    get_priority_convective_symbol,
     get_convective_symbol_title,
     get_forecast_display_info,
     colour_state_hex,
@@ -232,14 +231,16 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
             )
             worst_marker.add_to(m)
 
-            # Outer ring: always rendered at opacity 0; JS sets colour/opacity via updateMapForWindow.
+            # Outer ring: static colour set from Python-computed best state so it is
+            # visible immediately on page load. JS overrides colour/opacity via
+            # updateMapForWindow() whenever the slider moves.
             best_marker = folium.CircleMarker(
                 location=[lat, lon],
                 radius=16,
-                color=UNAVAILABLE_COLOR,
+                color=best_hex_color if best_hex_color else UNAVAILABLE_COLOR,
                 weight=5,
                 fill=False,
-                opacity=0,
+                opacity=1.0 if best_hex_color else 0,
                 tooltip=tooltip_text,
                 className="airport-best",
             )
