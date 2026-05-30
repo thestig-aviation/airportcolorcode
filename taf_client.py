@@ -17,32 +17,59 @@ def fetch_taf_data():
 
 
 _NO_TAF_CONDITIONS = ParsedConditions(
-    issue_time=None, ceiling_ft=None, visibility_km=None,
+    issue_time=None, forecast_periods=[],
     has_ts=False, has_cb=False, has_tcu=False,
-    ceiling_source=None, has_cavok=False,
+    has_cavok=False,
     forecast_available_now=False, forecast_unavailable_reason="No current TAF",
 )
 
 _UNAVAILABLE_CONDITIONS = ParsedConditions(
-    issue_time=None, ceiling_ft=None, visibility_km=None,
+    issue_time=None, forecast_periods=[],
     has_ts=False, has_cb=False, has_tcu=False,
-    ceiling_source=None, has_cavok=False,
+    has_cavok=False,
     forecast_available_now=False, forecast_unavailable_reason="TAF data unavailable",
 )
 
 
 def _apply_parsed_properties(properties, conditions):
     """Write a ParsedConditions namedtuple onto a feature properties dict."""
+    periods = conditions.forecast_periods
+
+    # Derive worst-case ceiling and visibility across all periods for popup display.
+    all_ceilings = [(p.ceiling_ft, p.ceiling_source) for p in periods if p.ceiling_ft is not None]
+    all_vis = [p.visibility_km for p in periods if p.visibility_km is not None]
+    if all_ceilings:
+        min_ceil_ft, min_ceil_source = min(all_ceilings, key=lambda x: x[0])
+    else:
+        min_ceil_ft, min_ceil_source = None, None
+
     properties["parsedIssueTime"] = conditions.issue_time
-    properties["parsedCeilingFt"] = conditions.ceiling_ft
-    properties["parsedVisibilityKm"] = conditions.visibility_km
+    properties["parsedCeilingFt"] = min_ceil_ft
+    properties["parsedVisibilityKm"] = min(all_vis) if all_vis else None
+    properties["parsedCeilingSource"] = min_ceil_source
     properties["parsedHasTs"] = conditions.has_ts
     properties["parsedHasCb"] = conditions.has_cb
     properties["parsedHasTcu"] = conditions.has_tcu
-    properties["parsedCeilingSource"] = conditions.ceiling_source
     properties["parsedHasCavok"] = conditions.has_cavok
     properties["parsedForecastAvailableNow"] = conditions.forecast_available_now
     properties["parsedForecastUnavailableReason"] = conditions.forecast_unavailable_reason
+    properties["parsedForecastPeriods"] = [
+        {
+            "begin": p.begin.isoformat() if p.begin else None,
+            "end": p.end.isoformat() if p.end else None,
+            "changeType": p.change_type,
+            "colourState": p.colour_state,
+            "rank": p.rank,
+            "ceilingFt": p.ceiling_ft,
+            "visibilityKm": p.visibility_km,
+            "ceilingSource": p.ceiling_source,
+            "isCavok": p.is_cavok,
+            "hasTs": p.has_ts,
+            "hasCb": p.has_cb,
+            "hasTcu": p.has_tcu,
+        }
+        for p in periods
+    ]
 
 
 def _fetch_single_airport(session, feature):
