@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 from collections import namedtuple
 from datetime import datetime, timezone
 
-from config import IWXXM_NS, BECMG_BASE_SPLIT
+from config import IWXXM_NS
 from logic import _is_thunderstorm_code, _is_cb_code, _is_tcu_code, get_colour_state, COLOUR_STATE_RANK
 
 ForecastPeriod = namedtuple("ForecastPeriod", [
@@ -298,8 +298,7 @@ def parse_iwxxm_conditions(xml_text):
         for el in root.findall(".//iwxxm:MeteorologicalAerodromeForecast", IWXXM_NS)
     ]
 
-    if BECMG_BASE_SPLIT:
-        forecast_periods = _apply_becmg_base_splits(forecast_periods)
+    forecast_periods = _apply_becmg_base_splits(forecast_periods)
 
     has_cavok = any(p.is_cavok for p in forecast_periods)
     has_ts = any(p.has_ts for p in forecast_periods)

@@ -4,9 +4,6 @@ from pathlib import Path
 TAF_API_URL = "https://aviation.met.no/collections/taf/locations"
 REQUEST_TIMEOUT_SECONDS = 20
 
-# Set to False to disable BECMG-base splitting (instant rollback).
-BECMG_BASE_SPLIT = True
-
 CB_ICON_LOCAL_NAME = "cb_symbol.png"
 TCU_ICON_LOCAL_NAME = "tcu_symbol.png"
 TS_ICON_LOCAL_NAME = "ts_symbol.png"
