@@ -1,4 +1,4 @@
-"""Post-processing for the generated HTML: injects the status notice, countdown timer, and auto-refresh logic."""
+"""Post-processing for the generated HTML: injects the status notice, time slider, countdown timer, and auto-refresh logic."""
 from datetime import datetime, timezone
 
 import requests
@@ -17,6 +17,198 @@ def _fetch_last_deploy_time_text():
     except Exception:
         last_deploy_time = None
     return last_deploy_time
+
+
+def _compute_taf_time_range(features):
+    """Return (start, end) as UTC datetimes rounded to the hour, covering all parsedForecastPeriods."""
+    earliest = None
+    latest = None
+    for feature in (features or []):
+        for period in feature.get("properties", {}).get("parsedForecastPeriods", []):
+            for iso_key, is_begin in (("begin", True), ("end", False)):
+                iso = period.get(iso_key)
+                if not iso:
+                    continue
+                try:
+                    dt = datetime.fromisoformat(iso)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    dt = dt.astimezone(timezone.utc)
+                    if is_begin and (earliest is None or dt < earliest):
+                        earliest = dt
+                    elif not is_begin and (latest is None or dt > latest):
+                        latest = dt
+                except ValueError:
+                    pass
+    if earliest is None or latest is None:
+        return None, None
+    earliest = earliest.replace(minute=0, second=0, microsecond=0)
+    latest = latest.replace(minute=0, second=0, microsecond=0)
+    return (earliest, latest) if latest > earliest else (None, None)
+
+
+def _build_time_slider_html(taf_start, taf_end):
+    """Build the time-slider CSS/HTML/JS block for injection into the output page."""
+    taf_base_ms = int(taf_start.timestamp() * 1000)
+    total_hours = int((taf_end - taf_start).total_seconds() / 3600)
+    if total_hours < 1:
+        return ""
+    start_label = taf_start.strftime("%Y-%m-%d %H:%M UTC")
+    end_label = taf_end.strftime("%Y-%m-%d %H:%M UTC")
+    return f'''
+    <style>
+        #taf-time-slider {{
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 540px;
+            background: white;
+            border: 2px solid #888;
+            border-radius: 7px;
+            padding: 10px 20px 14px;
+            font-family: Arial, sans-serif;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            z-index: 9998;
+        }}
+        #taf-slider-header {{
+            font-weight: bold;
+            font-size: 13px;
+            text-align: center;
+            margin-bottom: 6px;
+            color: #222;
+        }}
+        #taf-slider-labels {{
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #444;
+            margin-bottom: 4px;
+        }}
+        #taf-slider-track-area {{
+            position: relative;
+            height: 24px;
+        }}
+        #taf-track-bg {{
+            position: absolute;
+            top: 9px;
+            left: 0;
+            right: 0;
+            height: 6px;
+            background: #ddd;
+            border-radius: 3px;
+        }}
+        #taf-track-fill {{
+            position: absolute;
+            top: 9px;
+            height: 6px;
+            background: #4a9eff;
+            border-radius: 3px;
+        }}
+        #taf-slider-track-area input[type="range"] {{
+            position: absolute;
+            width: 100%;
+            background: none;
+            -webkit-appearance: none;
+            appearance: none;
+            pointer-events: none;
+            height: 24px;
+            margin: 0;
+            padding: 0;
+            top: 0;
+        }}
+        #taf-slider-track-area input[type="range"]::-webkit-slider-thumb {{
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #0066cc;
+            cursor: pointer;
+            pointer-events: all;
+            border: 2px solid white;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+        }}
+        #taf-slider-track-area input[type="range"]::-moz-range-thumb {{
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #0066cc;
+            cursor: pointer;
+            pointer-events: all;
+            border: 2px solid white;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+        }}
+    </style>
+    <div id="taf-time-slider">
+        <div id="taf-slider-header">TAF Validity Window</div>
+        <div id="taf-slider-labels">
+            <span id="taf-start-label">{start_label}</span>
+            <span id="taf-end-label">{end_label}</span>
+        </div>
+        <div id="taf-slider-track-area">
+            <div id="taf-track-bg"></div>
+            <div id="taf-track-fill"></div>
+            <input type="range" id="taf-slider-start" min="0" max="{total_hours}" value="0" step="1">
+            <input type="range" id="taf-slider-end"   min="0" max="{total_hours}" value="{total_hours}" step="1">
+        </div>
+    </div>
+    <script>
+    (function() {{
+        const BASE_MS = {taf_base_ms};
+        const TOTAL_HOURS = {total_hours};
+        const LS_START = 'taf-slider-start-ms';
+        const LS_END   = 'taf-slider-end-ms';
+
+        function hoursToLabel(h) {{
+            const d = new Date(BASE_MS + h * 3600000);
+            return d.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+        }}
+
+        function clamp(v, lo, hi) {{ return Math.max(lo, Math.min(hi, v)); }}
+
+        function updateSlider(movedSide) {{
+            const sEl = document.getElementById('taf-slider-start');
+            const eEl = document.getElementById('taf-slider-end');
+            let sv = parseInt(sEl.value, 10);
+            let ev = parseInt(eEl.value, 10);
+            if (sv >= ev) {{
+                if (movedSide === 'start') {{
+                    sEl.value = ev > 0 ? ev - 1 : 0;
+                    sv = parseInt(sEl.value, 10);
+                }} else {{
+                    eEl.value = sv < TOTAL_HOURS ? sv + 1 : TOTAL_HOURS;
+                    ev = parseInt(eEl.value, 10);
+                }}
+            }}
+            document.getElementById('taf-start-label').textContent = hoursToLabel(sv);
+            document.getElementById('taf-end-label').textContent = hoursToLabel(ev);
+            const fill = document.getElementById('taf-track-fill');
+            fill.style.left  = (sv / TOTAL_HOURS * 100) + '%';
+            fill.style.width = ((ev - sv) / TOTAL_HOURS * 100) + '%';
+            try {{
+                localStorage.setItem(LS_START, BASE_MS + sv * 3600000);
+                localStorage.setItem(LS_END,   BASE_MS + ev * 3600000);
+            }} catch (e) {{}}
+        }}
+
+        // Restore previous slider position (saved as UTC ms timestamps).
+        try {{
+            const savedStart = parseFloat(localStorage.getItem(LS_START));
+            const savedEnd   = parseFloat(localStorage.getItem(LS_END));
+            if (!isNaN(savedStart) && !isNaN(savedEnd)) {{
+                const sv = clamp(Math.round((savedStart - BASE_MS) / 3600000), 0, TOTAL_HOURS - 1);
+                const ev = clamp(Math.round((savedEnd   - BASE_MS) / 3600000), sv + 1, TOTAL_HOURS);
+                document.getElementById('taf-slider-start').value = sv;
+                document.getElementById('taf-slider-end').value   = ev;
+            }}
+        }} catch (e) {{}}
+
+        document.getElementById('taf-slider-start').addEventListener('input', function() {{ updateSlider('start'); }});
+        document.getElementById('taf-slider-end').addEventListener('input',   function() {{ updateSlider('end'); }});
+        updateSlider(null);
+    }})();
+    </script>
+    '''
 
 
 def _extract_latest_issue_time_text_and_icao(features):
@@ -198,6 +390,16 @@ def postprocess_generated_html(output_file, features=None):
 
     # Insert the auto-refresh code in the <head> section
     html_content = html_content.replace('</head>', auto_refresh_code + '</head>')
+
+    # Inject time slider before </body>
+    taf_start, taf_end = _compute_taf_time_range(features)
+    if taf_start and taf_end:
+        slider_html = _build_time_slider_html(taf_start, taf_end)
+        if slider_html:
+            if "</body>" in html_content:
+                html_content = html_content.replace("</body>", slider_html + "\n</body>", 1)
+            else:
+                html_content += slider_html
 
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(html_content)
