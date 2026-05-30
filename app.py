@@ -1,3 +1,4 @@
+"""Top-level orchestration: fetch TAF data, enrich each airport with IWXXM conditions, build the map, and post-process the HTML output."""
 from config import (
     CB_ICON_LOCAL_NAME,
     CB_ICON_PATH,
@@ -10,9 +11,7 @@ from config import (
 from html_postprocess import postprocess_generated_html
 from map_renderer import (
     build_map,
-    ensure_local_cb_icon,
-    ensure_local_tcu_icon,
-    ensure_local_ts_icon,
+    ensure_local_icon,
 )
 from taf_client import enrich_features_with_iwxxm, fetch_taf_data
 
@@ -20,9 +19,9 @@ from taf_client import enrich_features_with_iwxxm, fetch_taf_data
 def main():
     print("Fetching TAF data...")
     data = fetch_taf_data()
-    cb_icon_uri = ensure_local_cb_icon(CB_ICON_PATH, CB_ICON_LOCAL_NAME)
-    tcu_icon_uri = ensure_local_tcu_icon(TCU_ICON_PATH, TCU_ICON_LOCAL_NAME)
-    ts_icon_uri = ensure_local_ts_icon(TS_ICON_PATH, TS_ICON_LOCAL_NAME)
+    cb_icon_uri = ensure_local_icon(CB_ICON_PATH, CB_ICON_LOCAL_NAME)
+    tcu_icon_uri = ensure_local_icon(TCU_ICON_PATH, TCU_ICON_LOCAL_NAME)
+    ts_icon_uri = ensure_local_icon(TS_ICON_PATH, TS_ICON_LOCAL_NAME)
 
     features = data.get("features", [])
     print(f"Found {len(features)} TAF locations.")

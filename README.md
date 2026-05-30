@@ -41,9 +41,9 @@ Generate and publish a color-coded TAF map for airports using data from https://
 
 - `airportcolorcode.py`: Compatibility entrypoint used by local runs and GitHub Actions.
 - `app.py`: Top-level orchestration for fetch, enrich, render, and post-processing.
-- `config.py`: Shared constants, API URLs, and local output/icon paths.
-- `taf_client.py`: TAF list retrieval and per-airport IWXXM enrichment.
-- `iwxxm_parser.py`: IWXXM XML parsing, unit conversion helpers, and delegation to logic for weather code interpretation.
+- `config.py`: Shared constants, API URLs, colour state hex values, `UNAVAILABLE_COLOR`, and local output/icon paths.
+- `taf_client.py`: TAF list retrieval and concurrent per-airport IWXXM enrichment (fetched in parallel via `ThreadPoolExecutor`).
+- `iwxxm_parser.py`: IWXXM XML parsing, unit conversion helpers, and delegation to logic for weather code interpretation. Exposes the `ParsedConditions` namedtuple returned by `parse_iwxxm_conditions`.
 - `logic.py`: Centralized business logic including:
   - Colour state rules (UK/European aviation standards)
   - Convective weather detection (TS/CB/TCU code matching)
@@ -126,7 +126,7 @@ Enable Pages:
 ## Operational Notes
 
 - Live data and HTML assets depend on internet access.
-- The script gracefully continues if individual airport IWXXM requests fail.
-- If GitHub API cannot be reached/rate-limited, `Last Build` is shown as `unavailable`.
+- Individual airport IWXXM requests are fetched concurrently (up to 20 workers); failures are handled per-airport without stopping the run.
+- If the GitHub API cannot be reached or is rate-limited, `Codebase changed` is shown as `unavailable`.
 - Output path is fixed relative to script location for local and CI consistency.
 - Saved map view persistence is browser-specific (stored in `localStorage`).

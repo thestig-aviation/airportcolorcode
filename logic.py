@@ -1,7 +1,8 @@
+"""Business logic: colour state rules, convective weather detection, symbol priority, and forecast display value generation."""
 from datetime import datetime, timezone
 import re
 
-from config import COLOUR_STATE_COLORS
+from config import COLOUR_STATE_COLORS, UNAVAILABLE_COLOR
 
 
 def _is_thunderstorm_code(value):
@@ -54,6 +55,7 @@ def get_priority_convective_symbol(has_ts, has_cb, has_tcu):
 
 
 def format_issue_time_utc(issue_time_text):
+    """Format an ISO 8601 issue time string as HH:MM UTC. Returns None if input is absent."""
     if not issue_time_text:
         return None
 
@@ -70,6 +72,11 @@ def format_issue_time_utc(issue_time_text):
 
 
 def get_colour_state(ceiling_ft, visibility_km):
+    """Return the UK/European aviation colour state for given ceiling and visibility.
+
+    Implements the standard 7-level scale: BLU, WHT, GRN, YLO1, YLO2, AMB, RED.
+    None inputs are treated as unlimited (best-case). Ceiling in ft, visibility in km.
+    """
     if ceiling_ft is None:
         ceiling_ft = float("inf")
     if visibility_km is None:
@@ -94,7 +101,12 @@ def get_colour_state(ceiling_ft, visibility_km):
 
 
 def parse_conditions(feature):
-    """Extract ceiling, visibility, and ceiling source from a TAF feature."""
+    """Extract ceiling (ft), visibility (km), and ceiling source from a TAF feature.
+
+    Reads IWXXM-enriched properties (parsedCeilingFt etc.) when available,
+    falling back to raw API cloud/visibility fields.
+    ceiling_source indicates the layer type that drove the ceiling: "VV", "BKN", or "OVC".
+    """
     ceiling_ft = None
     visibility_km = None
     ceiling_source = None
@@ -150,7 +162,7 @@ def get_forecast_display_info(forecast_available_now, ceiling_ft, visibility_km,
         visibility_display = "CAVOK" if cavok_driven else (f"{visibility_km} km" if visibility_km is not None else "N/A km")
         color_label = color_code
     else:
-        hex_color = "#969696"
+        hex_color = UNAVAILABLE_COLOR
         ceiling_display = "Forecast Unavailable"
         visibility_display = "Forecast Unavailable"
         color_label = "Forecast Unavailable"
