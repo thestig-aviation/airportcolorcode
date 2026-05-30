@@ -29,6 +29,7 @@ def render_convective_marker(location, symbol_type, icon_uri):
         icon=DivIcon(
             icon_size=(40, 40),
             icon_anchor=(0, 0),
+            class_name="airport-convective",
             html=(
                 '<div style="position:relative;left:-30px;top:-34px;'
                 'width:30px;height:30px;display:flex;align-items:center;justify-content:center;'
@@ -99,32 +100,64 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
         </div>
         <div style="margin-top: 8px; font-size: 11px; color: #555; border-top: 1px solid #ddd; padding-top: 6px;">
             <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                <input type="checkbox" id="chk-best" checked style="margin-right: 5px; cursor: pointer; flex-shrink: 0;">
                 <div style="width: 20px; height: 20px; border-radius: 50%; border: 3px solid #0000FF; margin-right: 8px; flex-shrink: 0;"></div>
-                <span><strong>Outer ring:</strong> best forecast state</span>
+                <label for="chk-best" style="cursor: pointer;"><strong>Outer ring:</strong> best forecast state</label>
             </div>
-            <div style="display: flex; align-items: center; margin-bottom: 6px;">
+            <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                <input type="checkbox" id="chk-worst" checked style="margin-right: 5px; cursor: pointer; flex-shrink: 0;">
                 <div style="width: 20px; height: 20px; border-radius: 50%; background-color: #0000FF; border: 1px solid #333; margin-right: 8px; flex-shrink: 0;"></div>
-                <span><strong>Inner fill:</strong> worst forecast state</span>
+                <label for="chk-worst" style="cursor: pointer;"><strong>Inner fill:</strong> worst forecast state</label>
             </div>
         </div>
         <div style="margin-top: 4px; font-size: 11px; color: #666; border-top: 1px solid #ddd; padding-top: 6px;">
-            <div style="display: flex; align-items: center; margin-top: 4px;">
+            <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                <input type="checkbox" id="chk-convective" checked style="margin-right: 5px; cursor: pointer; flex-shrink: 0;">
+                <label for="chk-convective" style="cursor: pointer; font-weight: bold;">Convective symbols</label>
+            </div>
+            <div style="display: flex; align-items: center; margin-top: 4px; margin-left: 20px;">
                 <img src="''' + ts_icon_uri + '''"
                      width="23" height="23" alt="TS" style="margin-right: 6px; border: 2px solid #111; border-radius: 50%; padding: 2px; background: white; box-shadow:0 1px 4px rgba(0,0,0,0.45);"/>
                 <span>Thunderstorm (TS) in TAF</span>
             </div>
-            <div style="display: flex; align-items: center; margin-top: 4px;">
-                 <img src="''' + cb_icon_uri + '''" 
+            <div style="display: flex; align-items: center; margin-top: 4px; margin-left: 20px;">
+                <img src="''' + cb_icon_uri + '''"
                      width="23" height="23" alt="CB" style="margin-right: 6px; border: 2px solid #111; border-radius: 50%; padding: 2px; background: white; box-shadow:0 1px 4px rgba(0,0,0,0.45);"/>
                 <span>Cumulonimbus (CB) in TAF</span>
             </div>
-            <div style="display: flex; align-items: center; margin-top: 4px;">
+            <div style="display: flex; align-items: center; margin-top: 4px; margin-left: 20px;">
                 <img src="''' + tcu_icon_uri + '''"
                      width="23" height="23" alt="TCU" style="margin-right: 6px; border: 2px solid #111; border-radius: 50%; padding: 2px; background: white; box-shadow:0 1px 4px rgba(0,0,0,0.45);"/>
                 <span>Towering Cumulus (TCU) in TAF</span>
             </div>
         </div>
     </div>
+    <script>
+    (function() {
+        var LS = 'legend-chk-';
+        function applyToggle(cls, visible) {
+            document.querySelectorAll('.' + cls).forEach(function(el) {
+                el.style.display = visible ? '' : 'none';
+            });
+        }
+        function bindCheckbox(id, cls) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            var saved = localStorage.getItem(LS + id);
+            if (saved !== null) { el.checked = (saved === 'true'); }
+            applyToggle(cls, el.checked);
+            el.addEventListener('change', function() {
+                applyToggle(cls, el.checked);
+                try { localStorage.setItem(LS + id, el.checked); } catch(e) {}
+            });
+        }
+        window.addEventListener('load', function() {
+            bindCheckbox('chk-worst', 'airport-worst');
+            bindCheckbox('chk-best', 'airport-best');
+            bindCheckbox('chk-convective', 'airport-convective');
+        });
+    })();
+    </script>
     '''
     m.get_root().html.add_child(folium.Element(legend_html))
 
@@ -181,6 +214,7 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
                 fill_opacity=1.0,
                 popup=folium.Popup(popup_text, max_width=220),
                 tooltip=tooltip_text,
+                className="airport-worst",
             ).add_to(m)
 
             # Outer ring showing best forecast state (drawn on top so stroke is visible)
@@ -192,6 +226,7 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
                     weight=5,
                     fill=False,
                     tooltip=tooltip_text,
+                    className="airport-best",
                 ).add_to(m)
 
             # Render highest-priority convective symbol if forecast is current
