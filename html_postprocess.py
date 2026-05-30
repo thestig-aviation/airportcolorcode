@@ -62,7 +62,7 @@ def postprocess_generated_html(output_file, features=None):
     # Centered alpha notice at the top, transparent background, with last deploy time
     alpha_notice_html = f'''
     <div style="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10001;font-family:Arial,sans-serif;font-size:15px;color:#222;background:rgba(255,255,255,0.55);padding:6px 18px 6px 16px;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,0.07);pointer-events:none;text-align:center;">
-        Airport Color Code &mdash; <span style=\"color:#b36b00;\">alpha version</span><br/>
+        Airport Color Code &mdash; <span style=\"color:#FF0000;font-weight:bold;\">Prototype - not intended for operational use</span><br/>
         <span style="font-size:13px;color:#444;">Codebase changed: {last_deploy_time or 'unavailable'}</span><br/>
         <span style="font-size:13px;color:#444;">Last Issue Time: {latest_issue_time_display}</span>
     </div>

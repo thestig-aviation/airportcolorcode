@@ -29,7 +29,7 @@ Generate and publish a color-coded TAF map for airports using data from https://
 	- Priority order when multiple are present: TS, then CB, then TCU
 	- color-state legend panel
 - Adds a centered transparent status notice in generated HTML:
-	- `Airport Color Code — alpha version`
+	- `Airport Color Code — Prototype - not intended for operational use` (displayed in red boldface)
 	- `Codebase changed: <timestamp>` (fetched from latest commit on `main` for `thestig-aviation/airportcolorcode`)
 	- `Last Issue Time: <timestamp> (<ICAO>)` from latest parsed airport issue time
 - Injects client-side auto-refresh logic into output HTML:
@@ -43,9 +43,14 @@ Generate and publish a color-coded TAF map for airports using data from https://
 - `app.py`: Top-level orchestration for fetch, enrich, render, and post-processing.
 - `config.py`: Shared constants, API URLs, and local output/icon paths.
 - `taf_client.py`: TAF list retrieval and per-airport IWXXM enrichment.
-- `iwxxm_parser.py`: IWXXM XML parsing and unit conversion helpers.
-- `logic.py`: Issue-time formatting, condition parsing fallback, and colour-state rules.
-- `map_renderer.py`: Folium map rendering, marker drawing, legend, and icon overlays.
+- `iwxxm_parser.py`: IWXXM XML parsing, unit conversion helpers, and delegation to logic for weather code interpretation.
+- `logic.py`: Centralized business logic including:
+  - Colour state rules (UK/European aviation standards)
+  - Convective weather detection (TS/CB/TCU code matching)
+  - Convective symbol priority resolution (TS > CB > TCU)
+  - Forecast availability display logic (gray dots, unavailable reasons)
+  - Issue-time formatting and display value generation
+- `map_renderer.py`: Folium map rendering, marker drawing, legend, and icon overlays (uses logic.py for business rules).
 - `html_postprocess.py`: HTML notice/countdown injection and map auto-refresh behavior.
 - `airport_color_codes.html`: Generated map output.
 - `cb_symbol.png`: Local icon asset used for CB markers.
