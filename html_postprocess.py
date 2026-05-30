@@ -1,3 +1,4 @@
+"""Post-processing for the generated HTML: injects the status notice, countdown timer, and auto-refresh logic."""
 from datetime import datetime, timezone
 
 import requests
@@ -59,8 +60,8 @@ def postprocess_generated_html(output_file, features=None):
     if latest_issue_icao:
         latest_issue_time_display = f"{latest_issue_time_display} ({latest_issue_icao})"
 
-    # Centered alpha notice at the top, transparent background, with last deploy time
-    alpha_notice_html = f'''
+    # Centered status notice at the top of the map
+    status_notice_html = f'''
     <div style="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10001;font-family:Arial,sans-serif;font-size:15px;color:#222;background:rgba(255,255,255,0.55);padding:6px 18px 6px 16px;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,0.07);pointer-events:none;text-align:center;">
         Airport Color Code &mdash; <span style=\"color:#FF0000;font-weight:bold;\">Prototype - not intended for operational use</span><br/>
         <span style="font-size:13px;color:#444;">Codebase changed: {last_deploy_time or 'unavailable'}</span><br/>
@@ -70,9 +71,9 @@ def postprocess_generated_html(output_file, features=None):
 
     # Insert notice after <body> tag
     if "<body>" in html_content:
-        html_content = html_content.replace("<body>", "<body>\n" + alpha_notice_html, 1)
+        html_content = html_content.replace("<body>", "<body>\n" + status_notice_html, 1)
     else:
-        html_content = alpha_notice_html + html_content
+        html_content = status_notice_html + html_content
 
     # Auto-refresh JavaScript and style to inject
     auto_refresh_code = '''

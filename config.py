@@ -1,3 +1,4 @@
+"""Shared constants, API URLs, colour state definitions, and local path configuration."""
 from pathlib import Path
 
 TAF_API_URL = "https://aviation.met.no/collections/taf/locations"
@@ -28,3 +29,5 @@ COLOUR_STATE_COLORS = {
     "AMB": "#FF8000",
     "RED": "#FF0000",
 }
+
+UNAVAILABLE_COLOR = "#969696"

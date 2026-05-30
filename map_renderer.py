@@ -1,10 +1,9 @@
+"""Folium map builder: renders airport markers, convective overlays, legend, and label layers."""
 import folium
 from folium.features import DivIcon
 
-from config import COLOUR_STATE_COLORS
 from logic import (
     format_issue_time_utc,
-    get_colour_state,
     parse_conditions,
     get_priority_convective_symbol,
     get_convective_symbol_title,
@@ -12,25 +11,11 @@ from logic import (
 )
 
 
-def ensure_local_cb_icon(cb_icon_path, cb_icon_local_name):
-    """Return the local CB icon path used by the generated HTML."""
-    if not cb_icon_path.exists():
-        raise FileNotFoundError(f"Missing CB icon asset: {cb_icon_path}")
-    return cb_icon_local_name
-
-
-def ensure_local_tcu_icon(tcu_icon_path, tcu_icon_local_name):
-    """Return the local TCU icon path used by the generated HTML."""
-    if not tcu_icon_path.exists():
-        raise FileNotFoundError(f"Missing TCU icon asset: {tcu_icon_path}")
-    return tcu_icon_local_name
-
-
-def ensure_local_ts_icon(ts_icon_path, ts_icon_local_name):
-    """Return the local TS icon path used by the generated HTML."""
-    if not ts_icon_path.exists():
-        raise FileNotFoundError(f"Missing TS icon asset: {ts_icon_path}")
-    return ts_icon_local_name
+def ensure_local_icon(icon_path, icon_local_name):
+    """Return the local icon path used by the generated HTML."""
+    if not icon_path.exists():
+        raise FileNotFoundError(f"Missing icon asset: {icon_path}")
+    return icon_local_name
 
 
 def render_convective_marker(location, symbol_type, icon_uri):
@@ -56,17 +41,12 @@ def render_convective_marker(location, symbol_type, icon_uri):
     )
 
 
-def get_convective_icon_uri(symbol_type, ts_icon_uri, cb_icon_uri, tcu_icon_uri):
-    """Map symbol type to icon URI."""
-    icon_map = {
-        "TS": ts_icon_uri,
-        "CB": cb_icon_uri,
-        "TCU": tcu_icon_uri,
-    }
-    return icon_map.get(symbol_type)
-
-
 def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
+    """Build and return a Folium map with colour-coded airport markers and convective overlays.
+
+    Icon URIs reference locally-bundled PNG assets copied alongside the output HTML.
+    Priority for convective overlay display: TS > CB > TCU.
+    """
     m = folium.Map(location=[65, 15], zoom_start=4)
 
     # Add legend to the map
@@ -150,7 +130,7 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
             forecast_available_now = properties.get("parsedForecastAvailableNow", True)
             forecast_unavailable_reason = properties.get("parsedForecastUnavailableReason") or "Unknown reason"
 
-            ceiling_ft, visibility_km, ceiling_source = parse_conditions(feature)
+            ceiling_ft, visibility_km, _ = parse_conditions(feature)
             hex_color, color_label, ceiling_display, visibility_display = get_forecast_display_info(
                 forecast_available_now, ceiling_ft, visibility_km, has_cavok
             )

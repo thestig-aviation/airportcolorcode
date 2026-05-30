@@ -1,8 +1,23 @@
+"""IWXXM XML parser: extracts ceiling, visibility, and convective weather conditions from TAF payloads."""
 import xml.etree.ElementTree as ET
+from collections import namedtuple
 from datetime import datetime, timezone
 
 from config import IWXXM_NS
 from logic import _is_thunderstorm_code, _is_cb_code, _is_tcu_code
+
+ParsedConditions = namedtuple("ParsedConditions", [
+    "issue_time",
+    "ceiling_ft",
+    "visibility_km",
+    "has_ts",
+    "has_cb",
+    "has_tcu",
+    "ceiling_source",
+    "has_cavok",
+    "forecast_available_now",
+    "forecast_unavailable_reason",
+])
 
 
 def _uom_to_km(value, uom):
@@ -70,7 +85,12 @@ def parse_iwxxm_conditions(xml_text):
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
-        return None, None, None, False, False, False, None, False, False, "TAF data unavailable"
+        return ParsedConditions(
+            issue_time=None, ceiling_ft=None, visibility_km=None,
+            has_ts=False, has_cb=False, has_tcu=False,
+            ceiling_source=None, has_cavok=False,
+            forecast_available_now=False, forecast_unavailable_reason="TAF data unavailable",
+        )
 
     issue_time = None
     issue_time_elem = root.find(".//iwxxm:issueTime/gml:TimeInstant/gml:timePosition", IWXXM_NS)
@@ -166,15 +186,15 @@ def parse_iwxxm_conditions(xml_text):
     ceiling_ft = None
     if ceiling_candidates:
         ceiling_source, ceiling_ft = min(ceiling_candidates, key=lambda item: item[1])
-    return (
-        issue_time,
-        ceiling_ft,
-        visibility_km,
-        has_ts,
-        has_cb,
-        has_tcu,
-        ceiling_source,
-        has_cavok,
-        forecast_available_now,
-        forecast_unavailable_reason,
+    return ParsedConditions(
+        issue_time=issue_time,
+        ceiling_ft=ceiling_ft,
+        visibility_km=visibility_km,
+        has_ts=has_ts,
+        has_cb=has_cb,
+        has_tcu=has_tcu,
+        ceiling_source=ceiling_source,
+        has_cavok=has_cavok,
+        forecast_available_now=forecast_available_now,
+        forecast_unavailable_reason=forecast_unavailable_reason,
     )
