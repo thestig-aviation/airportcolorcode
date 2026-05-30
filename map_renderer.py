@@ -2,7 +2,14 @@ import folium
 from folium.features import DivIcon
 
 from config import COLOUR_STATE_COLORS
-from logic import format_issue_time_utc, get_colour_state, parse_conditions
+from logic import (
+    format_issue_time_utc,
+    get_colour_state,
+    parse_conditions,
+    get_priority_convective_symbol,
+    get_convective_symbol_title,
+    get_forecast_display_info,
+)
 
 
 def ensure_local_cb_icon(cb_icon_path, cb_icon_local_name):
@@ -24,6 +31,39 @@ def ensure_local_ts_icon(ts_icon_path, ts_icon_local_name):
     if not ts_icon_path.exists():
         raise FileNotFoundError(f"Missing TS icon asset: {ts_icon_path}")
     return ts_icon_local_name
+
+
+def render_convective_marker(location, symbol_type, icon_uri):
+    """Render a convective weather marker (TS, CB, or TCU)."""
+    title = get_convective_symbol_title(symbol_type)
+    alt = symbol_type
+    
+    return folium.Marker(
+        location=location,
+        icon=DivIcon(
+            icon_size=(40, 40),
+            icon_anchor=(0, 0),
+            html=(
+                '<div style="position:relative;left:-30px;top:-34px;'
+                'width:30px;height:30px;display:flex;align-items:center;justify-content:center;'
+                'background:rgba(255,255,255,0.96);border:2px solid #111;border-radius:50%;'
+                f'box-shadow:0 1px 4px rgba(0,0,0,0.45);" title="{title}">'
+                f'<img src="{icon_uri}" '
+                f'width="23" height="23" alt="{alt}" style="display:block;"/>'
+                '</div>'
+            ),
+        ),
+    )
+
+
+def get_convective_icon_uri(symbol_type, ts_icon_uri, cb_icon_uri, tcu_icon_uri):
+    """Map symbol type to icon URI."""
+    icon_map = {
+        "TS": ts_icon_uri,
+        "CB": cb_icon_uri,
+        "TCU": tcu_icon_uri,
+    }
+    return icon_map.get(symbol_type)
 
 
 def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
@@ -111,18 +151,9 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
             forecast_unavailable_reason = properties.get("parsedForecastUnavailableReason") or "Unknown reason"
 
             ceiling_ft, visibility_km, ceiling_source = parse_conditions(feature)
-            if forecast_available_now:
-                color_code = get_colour_state(ceiling_ft, visibility_km)
-                hex_color = COLOUR_STATE_COLORS[color_code]
-                cavok_driven = has_cavok and ceiling_ft is None and visibility_km is None
-                ceiling_display = "CAVOK" if cavok_driven else (f"{ceiling_ft} ft" if ceiling_ft is not None else "N/A ft")
-                visibility_display = "CAVOK" if cavok_driven else (f"{visibility_km} km" if visibility_km is not None else "N/A km")
-                color_label = color_code
-            else:
-                hex_color = "#969696"
-                ceiling_display = "Forecast Unavailable"
-                visibility_display = "Forecast Unavailable"
-                color_label = "Forecast Unavailable"
+            hex_color, color_label, ceiling_display, visibility_display = get_forecast_display_info(
+                forecast_available_now, ceiling_ft, visibility_km, has_cavok
+            )
 
             popup_text = (
                 f"<b>{name}</b><br>"
@@ -146,58 +177,16 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
                 tooltip=f"{name}: {color_label}",
             ).add_to(m)
 
-            if forecast_available_now and has_ts:
-                folium.Marker(
-                    location=[lat, lon],
-                    icon=DivIcon(
-                        icon_size=(40, 40),
-                        icon_anchor=(0, 0),
-                        html=(
-                            '<div style="position:relative;left:-30px;top:-34px;'
-                            'width:30px;height:30px;display:flex;align-items:center;justify-content:center;'
-                            'background:rgba(255,255,255,0.96);border:2px solid #111;border-radius:50%;'
-                            'box-shadow:0 1px 4px rgba(0,0,0,0.45);" title="Thunderstorm (TS) in TAF">'
-                            f'<img src="{ts_icon_uri}" '
-                            'width="23" height="23" alt="TS" style="display:block;"/>'
-                            '</div>'
-                        ),
-                    ),
-                ).add_to(m)
-            elif forecast_available_now and has_cb:
-                # TS has highest priority; CB then takes priority over TCU.
-                folium.Marker(
-                    location=[lat, lon],
-                    icon=DivIcon(
-                        icon_size=(40, 40),
-                        icon_anchor=(0, 0),
-                        html=(
-                            '<div style="position:relative;left:-30px;top:-34px;'
-                            'width:30px;height:30px;display:flex;align-items:center;justify-content:center;'
-                            'background:rgba(255,255,255,0.96);border:2px solid #111;border-radius:50%;'
-                            'box-shadow:0 1px 4px rgba(0,0,0,0.45);" title="Cumulonimbus (CB) in TAF">'
-                            f'<img src="{cb_icon_uri}" '
-                            'width="23" height="23" alt="CB" style="display:block;"/>'
-                            '</div>'
-                        ),
-                    ),
-                ).add_to(m)
-            elif forecast_available_now and has_tcu:
-                folium.Marker(
-                    location=[lat, lon],
-                    icon=DivIcon(
-                        icon_size=(40, 40),
-                        icon_anchor=(0, 0),
-                        html=(
-                            '<div style="position:relative;left:-30px;top:-34px;'
-                            'width:30px;height:30px;display:flex;align-items:center;justify-content:center;'
-                            'background:rgba(255,255,255,0.96);border:2px solid #111;border-radius:50%;'
-                            'box-shadow:0 1px 4px rgba(0,0,0,0.45);" title="Towering Cumulus (TCU) in TAF">'
-                            f'<img src="{tcu_icon_uri}" '
-                            'width="23" height="23" alt="TCU" style="display:block;"/>'
-                            '</div>'
-                        ),
-                    ),
-                ).add_to(m)
+            # Render highest-priority convective symbol if forecast is current
+            if forecast_available_now:
+                symbol_type = get_priority_convective_symbol(has_ts, has_cb, has_tcu)
+                if symbol_type:
+                    icon_uri_map = {
+                        "TS": ts_icon_uri,
+                        "CB": cb_icon_uri,
+                        "TCU": tcu_icon_uri,
+                    }
+                    render_convective_marker([lat, lon], symbol_type, icon_uri_map[symbol_type]).add_to(m)
 
             # Persistent label shown next to each marker.
             folium.Marker(

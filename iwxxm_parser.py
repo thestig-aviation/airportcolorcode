@@ -1,8 +1,8 @@
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
-import re
 
 from config import IWXXM_NS
+from logic import _is_thunderstorm_code, _is_cb_code, _is_tcu_code
 
 
 def _uom_to_km(value, uom):
@@ -41,22 +41,8 @@ def _parse_iso_utc(text):
     return parsed_time.astimezone(timezone.utc)
 
 
-def _is_thunderstorm_code(value):
-    if not value:
-        return False
-
-    normalized_value = value.strip().upper()
-    if not normalized_value:
-        return False
-
-    if "THUNDER" in normalized_value:
-        return True
-
-    # Handle common codes such as TS, TSRA, VCTS, +TSRA across text and URI-style values.
-    return bool(re.search(r"(^|[^A-Z0-9])TS([A-Z0-9]{0,5})([^A-Z0-9]|$)", normalized_value))
-
-
 def _find_has_thunderstorm(root):
+    """Extract thunderstorm presence from IWXXM weather elements."""
     weather_paths = (
         ".//iwxxm:weather",
         ".//iwxxm:forecastWeather",
@@ -148,10 +134,14 @@ def parse_iwxxm_conditions(xml_text):
         cloud_type_elem = layer.find("iwxxm:cloudType", IWXXM_NS)
         if cloud_type_elem is not None:
             cloud_type_href = cloud_type_elem.get(f"{{{IWXXM_NS['xlink']}}}href", "")
-            cloud_type_text = (cloud_type_elem.text or "").strip().upper()
-            if cloud_type_href.upper().endswith("/CB") or cloud_type_text == "CB":
+            cloud_type_text = (cloud_type_elem.text or "").strip()
+            
+            # Check both href (e.g., ".../CB") and text content
+            type_to_check = cloud_type_text or (cloud_type_href.rsplit("/", 1)[-1] if cloud_type_href else "")
+            
+            if _is_cb_code(type_to_check):
                 has_cb = True
-            if cloud_type_href.upper().endswith("/TCU") or cloud_type_text == "TCU":
+            if _is_tcu_code(type_to_check):
                 has_tcu = True
 
         if amount_elem is None or base_elem is None or not (base_elem.text or "").strip():

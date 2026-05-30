@@ -1,4 +1,56 @@
 from datetime import datetime, timezone
+import re
+
+from config import COLOUR_STATE_COLORS
+
+
+def _is_thunderstorm_code(value):
+    """Check if a weather code value indicates thunderstorms (TS/TSRA/VCTS/+TSRA/thunder)."""
+    if not value:
+        return False
+
+    normalized_value = value.strip().upper()
+    if not normalized_value:
+        return False
+
+    if "THUNDER" in normalized_value:
+        return True
+
+    # Handle common codes: TS, TSRA, VCTS, +TSRA, -TSRA, etc.
+    return bool(re.search(r"(^|[^A-Z0-9])TS([A-Z0-9]{0,5})([^A-Z0-9]|$)", normalized_value))
+
+
+def _is_cb_code(value):
+    """Check if a cloud type or weather code indicates cumulonimbus (CB)."""
+    if not value:
+        return False
+
+    normalized_value = value.strip().upper()
+    return normalized_value == "CB" or "CUMULONIMBUS" in normalized_value
+
+
+def _is_tcu_code(value):
+    """Check if a cloud type or weather code indicates towering cumulus (TCU)."""
+    if not value:
+        return False
+
+    normalized_value = value.strip().upper()
+    return normalized_value == "TCU" or "TOWERING" in normalized_value
+
+
+def get_priority_convective_symbol(has_ts, has_cb, has_tcu):
+    """Determine which convective symbol should be displayed.
+    
+    Priority order: TS > CB > TCU
+    Returns: "TS", "CB", "TCU", or None
+    """
+    if has_ts:
+        return "TS"
+    elif has_cb:
+        return "CB"
+    elif has_tcu:
+        return "TCU"
+    return None
 
 
 def format_issue_time_utc(issue_time_text):
@@ -73,3 +125,34 @@ def parse_conditions(feature):
         pass
 
     return ceiling_ft, visibility_km, ceiling_source
+
+
+def get_convective_symbol_title(symbol_type):
+    """Get the display title for a convective symbol type."""
+    titles = {
+        "TS": "Thunderstorm (TS) in TAF",
+        "CB": "Cumulonimbus (CB) in TAF",
+        "TCU": "Towering Cumulus (TCU) in TAF",
+    }
+    return titles.get(symbol_type, "")
+
+
+def get_forecast_display_info(forecast_available_now, ceiling_ft, visibility_km, has_cavok):
+    """Get color, labels, and display values based on forecast availability and conditions.
+    
+    Returns tuple: (hex_color, color_label, ceiling_display, visibility_display)
+    """
+    if forecast_available_now:
+        color_code = get_colour_state(ceiling_ft, visibility_km)
+        hex_color = COLOUR_STATE_COLORS[color_code]
+        cavok_driven = has_cavok and ceiling_ft is None and visibility_km is None
+        ceiling_display = "CAVOK" if cavok_driven else (f"{int(ceiling_ft)} ft" if ceiling_ft is not None else "N/A ft")
+        visibility_display = "CAVOK" if cavok_driven else (f"{visibility_km} km" if visibility_km is not None else "N/A km")
+        color_label = color_code
+    else:
+        hex_color = "#969696"
+        ceiling_display = "Forecast Unavailable"
+        visibility_display = "Forecast Unavailable"
+        color_label = "Forecast Unavailable"
+    
+    return hex_color, color_label, ceiling_display, visibility_display
