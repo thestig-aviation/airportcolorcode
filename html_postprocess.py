@@ -1,4 +1,5 @@
 """Post-processing for the generated HTML: injects the status notice, time slider, countdown timer, and auto-refresh logic."""
+import json
 from datetime import datetime, timezone
 
 import requests
@@ -47,7 +48,7 @@ def _compute_taf_time_range(features):
     return (earliest, latest) if latest > earliest else (None, None)
 
 
-def _build_time_slider_html(taf_start, taf_end):
+def _build_time_slider_html(taf_start, taf_end, airport_periods):
     """Build the time-slider CSS/HTML/JS block for injection into the output page."""
     taf_base_ms = int(taf_start.timestamp() * 1000)
     total_hours = int((taf_end - taf_start).total_seconds() / 3600)
@@ -55,6 +56,7 @@ def _build_time_slider_html(taf_start, taf_end):
         return ""
     start_label = taf_start.strftime("%Y-%m-%d %H:%M UTC")
     end_label = taf_end.strftime("%Y-%m-%d %H:%M UTC")
+    airport_periods_json = json.dumps(airport_periods)
     return f'''
     <style>
         #taf-time-slider {{
@@ -153,6 +155,7 @@ def _build_time_slider_html(taf_start, taf_end):
         </div>
     </div>
     <script>
+    var AIRPORT_PERIODS = {airport_periods_json};
     (function() {{
         const BASE_MS = {taf_base_ms};
         const TOTAL_HOURS = {total_hours};
@@ -165,6 +168,64 @@ def _build_time_slider_html(taf_start, taf_end):
         }}
 
         function clamp(v, lo, hi) {{ return Math.max(lo, Math.min(hi, v)); }}
+
+        function updateMapForWindow() {{
+            if (typeof window.LAYER_MAP === 'undefined') return;
+            var lmap = window.LAYER_MAP;
+            var sEl = document.getElementById('taf-slider-start');
+            var eEl = document.getElementById('taf-slider-end');
+            if (!sEl || !eEl) return;
+            var sv = parseInt(sEl.value, 10);
+            var ev = parseInt(eEl.value, 10);
+            var winStart = BASE_MS + sv * 3600000;
+            var winEnd   = BASE_MS + ev * 3600000;
+            for (var icao in lmap) {{
+                var lm = lmap[icao];
+                var periods = (typeof AIRPORT_PERIODS !== 'undefined' && AIRPORT_PERIODS[icao]) || [];
+                // Periods that overlap [winStart, winEnd)
+                var active = periods.filter(function(p) {{
+                    if (!p.begin || !p.end) return false;
+                    return new Date(p.begin).getTime() < winEnd &&
+                           new Date(p.end).getTime() > winStart;
+                }});
+                // Weather-bearing periods only (exclude wind-only change groups)
+                var wxActive = active.filter(function(p) {{
+                    return p.ceilingFt !== null || p.visibilityKm !== null || p.isCavok;
+                }});
+                // Worst dot colour
+                if (window[lm.worst]) {{
+                    var worstHex;
+                    if (wxActive.length === 0) {{
+                        worstHex = window.UNAVAILABLE_HEX;
+                    }} else {{
+                        var worstP = wxActive.reduce(function(a, b) {{
+                            return a.rank < b.rank ? a : b;
+                        }});
+                        worstHex = window.COLOUR_STATE_HEX[worstP.colourState] || window.UNAVAILABLE_HEX;
+                    }}
+                    window[lm.worst].setStyle({{fillColor: worstHex}});
+                }}
+                // Best ring
+                if (window[lm.best]) {{
+                    if (wxActive.length === 0) {{
+                        window[lm.best].setStyle({{opacity: 0}});
+                    }} else {{
+                        var bestP = wxActive.reduce(function(a, b) {{
+                            return a.rank > b.rank ? a : b;
+                        }});
+                        var bestHex = window.COLOUR_STATE_HEX[bestP.colourState] || window.UNAVAILABLE_HEX;
+                        window[lm.best].setStyle({{color: bestHex, opacity: 1}});
+                    }}
+                }}
+                // Convective symbols: show at most one (priority TS > CB > TCU)
+                var hasTs  = active.some(function(p) {{ return p.hasTs; }});
+                var hasCb  = active.some(function(p) {{ return p.hasCb; }});
+                var hasTcu = active.some(function(p) {{ return p.hasTcu; }});
+                if (lm.ts  && window[lm.ts])  window[lm.ts].setOpacity(hasTs ? 1 : 0);
+                if (lm.cb  && window[lm.cb])  window[lm.cb].setOpacity(!hasTs && hasCb ? 1 : 0);
+                if (lm.tcu && window[lm.tcu]) window[lm.tcu].setOpacity(!hasTs && !hasCb && hasTcu ? 1 : 0);
+            }}
+        }}
 
         function updateSlider(movedSide) {{
             const sEl = document.getElementById('taf-slider-start');
@@ -189,6 +250,7 @@ def _build_time_slider_html(taf_start, taf_end):
                 localStorage.setItem(LS_START, BASE_MS + sv * 3600000);
                 localStorage.setItem(LS_END,   BASE_MS + ev * 3600000);
             }} catch (e) {{}}
+            updateMapForWindow();
         }}
 
         // Restore previous slider position (saved as UTC ms timestamps).
@@ -392,9 +454,18 @@ def postprocess_generated_html(output_file, features=None):
     html_content = html_content.replace('</head>', auto_refresh_code + '</head>')
 
     # Inject time slider before </body>
+    airport_periods = {}
+    for feature in (features or []):
+        props = feature.get("properties", {})
+        icao = props.get("ICAO") or props.get("stationIdentification") or props.get("name")
+        if icao:
+            periods = props.get("parsedForecastPeriods") or []
+            if periods:
+                airport_periods[icao] = periods
+
     taf_start, taf_end = _compute_taf_time_range(features)
     if taf_start and taf_end:
-        slider_html = _build_time_slider_html(taf_start, taf_end)
+        slider_html = _build_time_slider_html(taf_start, taf_end, airport_periods)
         if slider_html:
             if "</body>" in html_content:
                 html_content = html_content.replace("</body>", slider_html + "\n</body>", 1)

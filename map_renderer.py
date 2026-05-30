@@ -1,7 +1,10 @@
 """Folium map builder: renders airport markers, convective overlays, legend, and label layers."""
+import json
+
 import folium
 from folium.features import DivIcon
 
+from config import COLOUR_STATE_COLORS, UNAVAILABLE_COLOR
 from logic import (
     format_issue_time_utc,
     parse_conditions,
@@ -19,17 +22,17 @@ def ensure_local_icon(icon_path, icon_local_name):
     return icon_local_name
 
 
-def render_convective_marker(location, symbol_type, icon_uri):
-    """Render a convective weather marker (TS, CB, or TCU)."""
+def render_convective_marker(location, symbol_type, icon_uri, class_name="airport-convective"):
+    """Render a convective weather marker (TS, CB, or TCU). Initially hidden; JS controls visibility."""
     title = get_convective_symbol_title(symbol_type)
     alt = symbol_type
-    
+
     return folium.Marker(
         location=location,
         icon=DivIcon(
             icon_size=(40, 40),
             icon_anchor=(0, 0),
-            class_name="airport-convective",
+            class_name=class_name,
             html=(
                 '<div style="position:relative;left:-30px;top:-34px;'
                 'width:30px;height:30px;display:flex;align-items:center;justify-content:center;'
@@ -40,6 +43,7 @@ def render_convective_marker(location, symbol_type, icon_uri):
                 '</div>'
             ),
         ),
+        opacity=0,
     )
 
 
@@ -161,6 +165,7 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
     '''
     m.get_root().html.add_child(folium.Element(legend_html))
 
+    layer_map = {}
     for feature in features:
         try:
             coords = feature["geometry"]["coordinates"]
@@ -183,8 +188,17 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
             best_color_label = None
             if forecast_available_now:
                 _periods = properties.get("parsedForecastPeriods") or []
-                if _periods:
-                    _best = max(_periods, key=lambda p: p["rank"])
+                # Exclude periods with no explicit vis/ceiling/CAVOK data; a
+                # wind-only change group carries no colour-state information
+                # and must not inflate or deflate the best/worst rank.
+                _wx_periods = [
+                    p for p in _periods
+                    if p.get("ceilingFt") is not None
+                    or p.get("visibilityKm") is not None
+                    or p.get("isCavok")
+                ]
+                if _wx_periods:
+                    _best = max(_wx_periods, key=lambda p: p["rank"])
                     best_color_label = _best["colourState"]
                     best_hex_color = colour_state_hex(best_color_label)
 
@@ -204,7 +218,7 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
                 if best_color_label else f"{name}: {color_label}"
             )
 
-            folium.CircleMarker(
+            worst_marker = folium.CircleMarker(
                 location=[lat, lon],
                 radius=10,
                 color="#333",
@@ -215,30 +229,53 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
                 popup=folium.Popup(popup_text, max_width=220),
                 tooltip=tooltip_text,
                 className="airport-worst",
-            ).add_to(m)
+            )
+            worst_marker.add_to(m)
 
-            # Outer ring showing best forecast state (drawn on top so stroke is visible)
-            if forecast_available_now and best_hex_color:
-                folium.CircleMarker(
-                    location=[lat, lon],
-                    radius=16,
-                    color=best_hex_color,
-                    weight=5,
-                    fill=False,
-                    tooltip=tooltip_text,
-                    className="airport-best",
-                ).add_to(m)
+            # Outer ring: always rendered at opacity 0; JS sets colour/opacity via updateMapForWindow.
+            best_marker = folium.CircleMarker(
+                location=[lat, lon],
+                radius=16,
+                color=UNAVAILABLE_COLOR,
+                weight=5,
+                fill=False,
+                opacity=0,
+                tooltip=tooltip_text,
+                className="airport-best",
+            )
+            best_marker.add_to(m)
 
-            # Render highest-priority convective symbol if forecast is current
-            if forecast_available_now:
-                symbol_type = get_priority_convective_symbol(has_ts, has_cb, has_tcu)
-                if symbol_type:
-                    icon_uri_map = {
-                        "TS": ts_icon_uri,
-                        "CB": cb_icon_uri,
-                        "TCU": tcu_icon_uri,
-                    }
-                    render_convective_marker([lat, lon], symbol_type, icon_uri_map[symbol_type]).add_to(m)
+            # Convective markers: render all three types for any airport that has convective
+            # in its forecast. JS shows at most one (priority TS > CB > TCU) per time window.
+            _periods = properties.get("parsedForecastPeriods") or []
+            _any_convective = any(
+                p.get("hasTs") or p.get("hasCb") or p.get("hasTcu") for p in _periods
+            )
+            ts_name = cb_name = tcu_name = None
+            if _any_convective:
+                ts_m = render_convective_marker(
+                    [lat, lon], "TS", ts_icon_uri, "airport-convective airport-convective-ts"
+                )
+                ts_m.add_to(m)
+                ts_name = ts_m.get_name()
+                cb_m = render_convective_marker(
+                    [lat, lon], "CB", cb_icon_uri, "airport-convective airport-convective-cb"
+                )
+                cb_m.add_to(m)
+                cb_name = cb_m.get_name()
+                tcu_m = render_convective_marker(
+                    [lat, lon], "TCU", tcu_icon_uri, "airport-convective airport-convective-tcu"
+                )
+                tcu_m.add_to(m)
+                tcu_name = tcu_m.get_name()
+
+            layer_map[name] = {
+                "worst": worst_marker.get_name(),
+                "best": best_marker.get_name(),
+                "ts": ts_name,
+                "cb": cb_name,
+                "tcu": tcu_name,
+            }
 
             # Persistent label shown next to each marker.
             folium.Marker(
@@ -258,4 +295,14 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
         except Exception:
             continue
 
+    layer_map_json = json.dumps(layer_map)
+    colour_state_hex_json = json.dumps(COLOUR_STATE_COLORS)
+    unavailable_hex_json = json.dumps(UNAVAILABLE_COLOR)
+    m.get_root().html.add_child(folium.Element(
+        f'<script>'
+        f'window.LAYER_MAP={layer_map_json};'
+        f'window.COLOUR_STATE_HEX={colour_state_hex_json};'
+        f'window.UNAVAILABLE_HEX={unavailable_hex_json};'
+        f'</script>'
+    ))
     return m
