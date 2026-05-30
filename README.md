@@ -12,10 +12,11 @@ Generate and publish a color-coded TAF map for airports using data from https://
 	- CAVOK flag
 	- colour state (`BLU` … `RED`) and numeric **rank** (0 = RED … 6 = BLU)
 	- convective flags: `has_ts`, `has_cb`, `has_tcu`
-- Derives **worst** and **best** forecast conditions by comparing period ranks:
-	- worst = `min(rank)` across periods → inner filled dot
-	- best = `max(rank)` across periods → outer ring
-- Calculates UK/European colour state from a **table-driven** threshold lookup (`_COLOUR_STATE_THRESHOLDS`), ordered by `COLOUR_STATE_RANK`:
+- **BECMG base-splitting** (`BECMG_BASE_SPLIT` flag in `config.py`): when a BECMG period carries explicit visibility or ceiling data, the enclosing BASE period is split at `becmg.end` — the pre-transition segment retains the original BASE conditions and a synthetic post-transition segment inherits the BECMG's conditions. Wind-only BECMGs (no vis, no ceiling, not CAVOK) are excluded from splitting and from worst/best rank computation so they cannot artificially inflate the colour state to BLU.
+- Derives **worst** and **best** forecast conditions by comparing ranks across weather-bearing periods only (periods with explicit vis/ceiling/CAVOK):
+	- worst = `min(rank)` → inner filled dot colour
+	- best = `max(rank)` → outer ring colour
+- Calculates UK/European colour state from a **table-driven** threshold lookup (`_COLOUR_STATE_THRESHOLDS`):
 	- `BLU` ≥ 2500 ft and ≥ 8 km
 	- `WHT` < 2500 ft or < 8 km
 	- `GRN` < 1500 ft or < 5 km
@@ -24,50 +25,53 @@ Generate and publish a color-coded TAF map for airports using data from https://
 	- `AMB` < 300 ft or < 1.6 km
 	- `RED` < 200 ft or < 0.8 km
 - Renders an interactive Folium map with:
-	- **Concentric circle markers** per airport:
-		- Inner filled circle (radius 10): worst forecast state colour
-		- Outer ring (radius 16, weight 5): best forecast state colour
-		- Gray inner dot only (no outer ring) when forecast is unavailable
+	- **Concentric circle markers** per airport (all markers always present; JS controls colour and opacity via the time slider):
+		- Inner filled circle (radius 10, class `airport-worst`): worst forecast state colour for the selected window
+		- Outer ring (radius 16, weight 5, class `airport-best`): best forecast state colour; hidden (`opacity: 0`) when no weather data overlaps the selected window
+		- Gray inner dot when no forecast data overlaps the selected window
 	- tooltip: `ICAO: <worst state> / <best state>`
 	- popup: issue time, worst state, best state, ceiling and visibility
-	- CAVOK-aware popup display (`Ceiling/VV: CAVOK`, `Visibility: CAVOK`)
-	- human-friendly unavailable reason in popup (`No current TAF`, `TAF not valid at current time`, `TAF data unavailable`)
+	- CAVOK-aware popup display
+	- human-friendly unavailable reason in popup
 	- persistent ICAO labels
-	- TS/CB/TCU symbol overlay for airports with convective weather in TAF (priority: TS > CB > TCU)
-	- colour-state legend with inner fill / outer ring explainer
+	- **Convective overlays**: all three symbol types (TS, CB, TCU) are rendered per airport that has any convective in its TAF, each with its own class (`airport-convective-ts`, `airport-convective-cb`, `airport-convective-tcu`). JS shows at most one (priority TS > CB > TCU) based on which periods overlap the selected time window.
+	- **Legend** with colour-state reference, inner fill / outer ring explainer, and **checkboxes** to toggle worst dot, best ring, and convective overlays independently (checkbox state persists in `localStorage`).
+- **Time slider** fixed at the bottom of the page:
+	- dual-thumb range slider spanning the full TAF validity window
+	- labels update live as thumbs are dragged
+	- on every drag, `updateMapForWindow()` recomputes worst/best colour and convective visibility for every airport and applies changes immediately via Leaflet `setStyle` / `setOpacity`
+	- slider position persists across auto-refresh via `localStorage` (stored as absolute UTC millisecond timestamps, clamped to the new TAF window on restore)
 - Adds a centered transparent status notice in generated HTML:
-	- `Airport Color Code — Prototype - not intended for operational use` (displayed in red boldface)
-	- `Codebase changed: <timestamp>` (fetched from latest commit on `main` for `thestig-aviation/airportcolorcode`)
-	- `Last Issue Time: <timestamp> (<ICAO>)` from latest parsed airport issue time
-- Injects client-side auto-refresh logic into output HTML:
-	- countdown timer visible in lower-right corner
-	- automatic page reload at `:01`, `:16`, `:31`, `:46`
-	- retains map center/zoom between refreshes using browser local storage
+	- `Airport Color Code — Prototype - not intended for operational use`
+	- `Codebase changed: <timestamp>` (from latest commit on `main`)
+	- `Last Issue Time: <timestamp> (<ICAO>)`
+- Injects client-side auto-refresh logic:
+	- countdown timer in lower-right corner
+	- page reload at `:01`, `:16`, `:31`, `:46` past each hour
+	- map center/zoom persisted in `localStorage` across refreshes
 
 ## Repository Layout
 
 - `airportcolorcode.py`: Compatibility entrypoint used by local runs and GitHub Actions.
 - `app.py`: Top-level orchestration for fetch, enrich, render, and post-processing.
-- `config.py`: Shared constants, API URLs, colour state hex values, `UNAVAILABLE_COLOR`, and local output/icon paths.
-- `taf_client.py`: TAF list retrieval and concurrent per-airport IWXXM enrichment (fetched in parallel via `ThreadPoolExecutor`). Serialises `ForecastPeriod` data (including convective flags) as `parsedForecastPeriods` onto each feature's properties dict.
-- `iwxxm_parser.py`: IWXXM XML parsing and unit conversion. Exports two namedtuples:
-  - `ForecastPeriod` — one record per forecast period; carries time bounds, change type, colour state, rank, ceiling, visibility, and convective flags (`has_ts`, `has_cb`, `has_tcu`).
-  - `ParsedConditions` — top-level result of `parse_iwxxm_conditions`; holds the `forecast_periods` list plus aggregated convective and availability flags.
-- `logic.py`: Centralised business logic including:
-  - `COLOUR_STATE_RANK` — numeric rank dict (RED=0 … BLU=6) used for period comparisons.
-  - `_COLOUR_STATE_THRESHOLDS` — table-driven threshold list powering `get_colour_state`.
-  - `colour_state_hex(state_code)` — hex colour lookup for a state code.
-  - Convective weather detection helpers (`_is_thunderstorm_code`, `_is_cb_code`, `_is_tcu_code`).
-  - Convective symbol priority resolution (`get_priority_convective_symbol`: TS > CB > TCU).
-  - Forecast availability display logic (gray dots, unavailable reasons).
-  - Issue-time formatting and display value generation.
-- `map_renderer.py`: Folium map rendering — concentric circle markers (inner fill = worst state, outer ring = best state), convective overlays, legend, and ICAO labels. Reads `parsedForecastPeriods` to derive worst/best rank.
-- `html_postprocess.py`: HTML notice/countdown injection and map auto-refresh behaviour.
+- `config.py`: Shared constants, API URLs, colour state hex values, `UNAVAILABLE_COLOR`, local output/icon paths, and `BECMG_BASE_SPLIT` rollback flag.
+- `taf_client.py`: TAF list retrieval and concurrent per-airport IWXXM enrichment (fetched in parallel via `ThreadPoolExecutor`). Serialises `ForecastPeriod` data as `parsedForecastPeriods` onto each feature's properties dict.
+- `iwxxm_parser.py`: IWXXM XML parsing and unit conversion. Key exports:
+  - `ForecastPeriod` — one record per forecast period; carries time bounds, change type, colour state, rank, ceiling, visibility, CAVOK, and convective flags.
+  - `ParsedConditions` — top-level result; holds the `forecast_periods` list plus aggregated flags.
+  - `_apply_becmg_base_splits` — splits the BASE period at weather-changing BECMG boundaries; skips wind-only BECMGs. Controlled by `BECMG_BASE_SPLIT` in `config.py`.
+- `logic.py`: Centralised business logic:
+  - `COLOUR_STATE_RANK` / `_COLOUR_STATE_THRESHOLDS` — rank dict and threshold table.
+  - `colour_state_hex(state_code)` — hex colour lookup.
+  - Convective detection helpers and priority resolution.
+  - Forecast availability display logic.
+- `map_renderer.py`: Folium map rendering. Builds concentric circle markers (initial colours from current-time state), always renders the best ring at `opacity: 0`, renders all three convective marker types for airports with any convective in their TAF (all initially hidden). After the loop, injects `window.LAYER_MAP`, `window.COLOUR_STATE_HEX`, and `window.UNAVAILABLE_HEX` as a `<script>` element for use by the slider JS.
+- `html_postprocess.py`: Post-processing pipeline:
+  - Status notice and auto-refresh injection.
+  - Time slider HTML/CSS/JS block; embeds `AIRPORT_PERIODS` JSON and the `updateMapForWindow()` function which reads `LAYER_MAP` and `AIRPORT_PERIODS` to recolour markers on every slider event.
 - `airport_color_codes.html`: Generated map output.
-- `cb_symbol.png`: Local icon asset used for CB markers.
-- `tcu_symbol.png`: Local icon asset used for TCU markers.
-- `ts_symbol.png`: Local icon asset used for TS markers.
-- `.github/workflows/publish-map.yml`: GitHub Actions workflow for build and Pages deployment.
+- `cb_symbol.png`, `tcu_symbol.png`, `ts_symbol.png`: Local icon assets.
+- `.github/workflows/publish-map.yml`: GitHub Actions workflow (pip dependency caching enabled).
 
 ## Quick Start
 
@@ -87,13 +91,6 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Rollback locally:
-
-```bash
-mamba deactivate
-mamba activate airportcolorcode
-```
-
 ### 2. Install dependencies
 
 ```bash
@@ -106,38 +103,27 @@ pip install -r requirements.txt
 python airportcolorcode.py
 ```
 
-Generated output:
-
-- `airport_color_codes.html`
+Generated output: `airport_color_codes.html`
 
 ## GitHub Pages Deployment
 
 Workflow file: `.github/workflows/publish-map.yml`
 
-Current workflow behavior:
-
-- Triggers:
-	- push to `main`
-	- manual run (`workflow_dispatch`)
-	- scheduled every 15 minutes (`*/15 * * * *`)
-- Build job:
-	- installs Python 3.13 + dependencies
-	- runs `airportcolorcode.py`
-	- copies `airport_color_codes.html` to `index.html`
-	- uploads Pages artifact
-- Deploy job:
-	- publishes artifact to GitHub Pages
+- Triggers: push to `main`, `workflow_dispatch`, scheduled every 15 minutes
+- Build: installs Python 3.13 + cached pip dependencies, runs `airportcolorcode.py`, copies output to `index.html`, uploads Pages artifact
+- Deploy: publishes artifact to GitHub Pages
 
 Enable Pages:
 
 1. Push repository to GitHub.
-2. Open **Settings -> Pages**.
+2. Open **Settings → Pages**.
 3. Under **Build and deployment**, select **Source: GitHub Actions**.
 
 ## Operational Notes
 
-- Live data and HTML assets depend on internet access.
-- Individual airport IWXXM requests are fetched concurrently (up to 20 workers); failures are handled per-airport without stopping the run.
-- If the GitHub API cannot be reached or is rate-limited, `Codebase changed` is shown as `unavailable`.
+- Individual airport IWXXM requests are fetched concurrently (up to 20 workers); per-airport failures do not stop the run.
+- If the GitHub API is unreachable or rate-limited, `Codebase changed` displays as `unavailable`.
 - Output path is fixed relative to script location for local and CI consistency.
-- Saved map view persistence is browser-specific (stored in `localStorage`).
+- Set `BECMG_BASE_SPLIT = False` in `config.py` to disable BECMG base-splitting without any other code change.
+- All UI state (slider position, checkbox toggles, map view) persists across auto-refresh via `localStorage`.
+

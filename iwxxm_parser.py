@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 from collections import namedtuple
 from datetime import datetime, timezone
 
-from config import IWXXM_NS
+from config import IWXXM_NS, BECMG_BASE_SPLIT
 from logic import _is_thunderstorm_code, _is_cb_code, _is_tcu_code, get_colour_state, COLOUR_STATE_RANK
 
 ForecastPeriod = namedtuple("ForecastPeriod", [
@@ -91,6 +91,83 @@ def _find_has_thunderstorm(root):
                 if _is_thunderstorm_code(candidate):
                     return True
     return False
+
+
+def _make_base_period(template, begin, end):
+    """Return a new BASE-typed ForecastPeriod whose conditions are copied from *template*."""
+    return ForecastPeriod(
+        begin=begin, end=end, change_type="BASE",
+        colour_state=template.colour_state, rank=template.rank,
+        ceiling_ft=template.ceiling_ft, visibility_km=template.visibility_km,
+        ceiling_source=template.ceiling_source, is_cavok=template.is_cavok,
+        has_ts=template.has_ts, has_cb=template.has_cb, has_tcu=template.has_tcu,
+    )
+
+
+def _apply_becmg_base_splits(periods):
+    """Split the BASE period at BECMG boundaries for correct time-slider filtering.
+
+    For each BECMG (sorted by end time):
+      - The pre-BECMG BASE segment is kept running up to becmg.end, so that
+        during the transition window the original (pessimistic) conditions are
+        still present for worst-state computation.
+      - A synthetic BASE period is inserted from becmg.end onwards carrying the
+        BECMG's completed conditions.
+
+    BECMG periods with missing or zero-length time bounds are skipped (no split).
+    Returns a new list; the input is not modified.
+    To disable entirely: set BECMG_BASE_SPLIT = False in config.py.
+    """
+    valid_becmgs = sorted(
+        [
+            p for p in periods
+            if p.change_type == "BECOMING"
+            and p.begin is not None
+            and p.end is not None
+            and p.end > p.begin
+            # Only split on BECMGs that carry explicit vis/ceiling information.
+            # Wind-only BECMGs (no vis, no ceiling, not CAVOK) do not define a
+            # new visibility/ceiling baseline, so they must not trigger a split.
+            and (p.visibility_km is not None or p.ceiling_ft is not None or p.is_cavok)
+        ],
+        key=lambda p: p.end,
+    )
+    if not valid_becmgs:
+        return list(periods)
+
+    base_periods = [p for p in periods if p.change_type == "BASE"]
+    if not base_periods:
+        return list(periods)
+
+    base = base_periods[0]
+    all_becmg = [p for p in periods if p.change_type == "BECOMING"]
+    other = [p for p in periods if p.change_type not in ("BASE", "BECOMING")]
+
+    result_bases = []
+    current_start = base.begin
+    current_conditions = base
+
+    for becmg in valid_becmgs:
+        if current_start is None:
+            break
+        # BECMG already completed before the current segment starts — just advance.
+        if becmg.end <= current_start:
+            current_conditions = becmg
+            current_start = becmg.end
+            continue
+        # Emit the pre-BECMG base segment up to becmg.end.
+        seg_end = becmg.end if (base.end is None or becmg.end <= base.end) else base.end
+        if seg_end > current_start:
+            result_bases.append(_make_base_period(current_conditions, current_start, seg_end))
+        current_conditions = becmg
+        current_start = becmg.end
+
+    # Emit the tail from the last BECMG.end to the end of the TAF.
+    if current_start is not None and base.end is not None and current_start < base.end:
+        result_bases.append(_make_base_period(current_conditions, current_start, base.end))
+
+    # Preserve any unexpected additional base periods beyond the first.
+    return result_bases + base_periods[1:] + all_becmg + other
 
 
 def _parse_single_period(forecast_el, taf_begin, taf_end):
@@ -220,6 +297,9 @@ def parse_iwxxm_conditions(xml_text):
         _parse_single_period(el, taf_begin, taf_end)
         for el in root.findall(".//iwxxm:MeteorologicalAerodromeForecast", IWXXM_NS)
     ]
+
+    if BECMG_BASE_SPLIT:
+        forecast_periods = _apply_becmg_base_splits(forecast_periods)
 
     has_cavok = any(p.is_cavok for p in forecast_periods)
     has_ts = any(p.has_ts for p in forecast_periods)
