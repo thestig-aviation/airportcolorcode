@@ -185,21 +185,20 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
 
             best_hex_color = None
             best_color_label = None
-            if forecast_available_now:
-                _periods = properties.get("parsedForecastPeriods") or []
-                # Exclude periods with no explicit vis/ceiling/CAVOK data; a
-                # wind-only change group carries no colour-state information
-                # and must not inflate or deflate the best/worst rank.
-                _wx_periods = [
-                    p for p in _periods
-                    if p.get("ceilingFt") is not None
-                    or p.get("visibilityKm") is not None
-                    or p.get("isCavok")
-                ]
-                if _wx_periods:
-                    _best = max(_wx_periods, key=lambda p: p["rank"])
-                    best_color_label = _best["colourState"]
-                    best_hex_color = colour_state_hex(best_color_label)
+            _periods = properties.get("parsedForecastPeriods") or []
+            # Exclude periods with no explicit vis/ceiling/CAVOK data; a
+            # wind-only change group carries no colour-state information
+            # and must not inflate or deflate the best/worst rank.
+            _wx_periods = [
+                p for p in _periods
+                if p.get("ceilingFt") is not None
+                or p.get("visibilityKm") is not None
+                or p.get("isCavok")
+            ]
+            if _wx_periods:
+                _best = max(_wx_periods, key=lambda p: p["rank"])
+                best_color_label = _best["colourState"]
+                best_hex_color = colour_state_hex(best_color_label)
 
             popup_text = (
                 f"<b>{name}</b><br>"

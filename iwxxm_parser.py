@@ -283,14 +283,8 @@ def parse_iwxxm_conditions(xml_text):
     if valid_to_elem is not None:
         taf_end = _parse_iso_utc(valid_to_elem.text)
 
-    now_utc = datetime.now(timezone.utc)
-    forecast_available_now = bool(taf_begin and taf_end and taf_begin <= now_utc <= taf_end)
-    if forecast_available_now:
-        forecast_unavailable_reason = None
-    elif taf_begin is None or taf_end is None:
-        forecast_unavailable_reason = "No current TAF"
-    else:
-        forecast_unavailable_reason = "TAF not valid at current time"
+    forecast_available_now = bool(taf_begin and taf_end)
+    forecast_unavailable_reason = None if forecast_available_now else "No current TAF"
 
     # Parse each forecast period independently; colour state is computed per period.
     forecast_periods = [
