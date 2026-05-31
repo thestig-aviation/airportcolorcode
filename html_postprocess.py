@@ -365,8 +365,8 @@ def postprocess_generated_html(output_file, features=None):
         }
     </style>
     <script>
-        // Refresh at :01, :16, :31, and :46 minutes past each hour
-        const TARGET_MINUTES = [1, 16, 31, 46];
+        // Refresh at 02:30, 05:30, 08:30, 11:30, 14:30, 17:30, 20:30, 23:30 UTC
+        const TARGET_TIMES = [[2,30],[5,30],[8,30],[11,30],[14,30],[17,30],[20,30],[23,30]];
         const MAP_VIEW_STORAGE_KEY = 'airportcolorcode.mapView.v1';
         let secondsRemaining = 0;
 
@@ -412,20 +412,22 @@ def postprocess_generated_html(output_file, features=None):
 
         function calculateSecondsUntilNextUpdate() {
             const now = new Date();
-            const currentMinute = now.getMinutes();
-            const currentSecond = now.getSeconds();
-            let nextTargetMinute = TARGET_MINUTES.find(m => m > currentMinute);
-            if (nextTargetMinute === undefined) {
-                nextTargetMinute = TARGET_MINUTES[0] + 60;
+            const nowTotalMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+            const nowSeconds = now.getUTCSeconds();
+            let next = TARGET_TIMES.find(([h, m]) => h * 60 + m > nowTotalMinutes);
+            let extraDayMinutes = 0;
+            if (!next) {
+                next = TARGET_TIMES[0];
+                extraDayMinutes = 24 * 60;
             }
-            const minutesUntil = nextTargetMinute - currentMinute;
-            const secondsUntil = (minutesUntil * 60) - currentSecond;
-            return secondsUntil;
+            const minutesUntil = next[0] * 60 + next[1] - nowTotalMinutes + extraDayMinutes;
+            return minutesUntil * 60 - nowSeconds;
         }
         function updateCountdown() {
-            const minutes = Math.floor(secondsRemaining / 60);
+            const hours = Math.floor(secondsRemaining / 3600);
+            const minutes = Math.floor((secondsRemaining % 3600) / 60);
             const seconds = secondsRemaining % 60;
-            const timeString = minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
+            const timeString = hours + ':' + (minutes < 10 ? '0' : '') + minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
             const timerElement = document.getElementById('countdown-time');
             if (timerElement) {
                 timerElement.textContent = timeString;
