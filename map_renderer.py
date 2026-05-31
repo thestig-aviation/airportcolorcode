@@ -68,7 +68,8 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
                 font-size: 12px; 
                 box-shadow: 0 2px 6px rgba(0,0,0,0.3);
                 z-index: 9999;">
-        <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">Color State Criteria</h4>
+        <h4 id="map-legend-toggle" style="margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">Color State Criteria <span id="map-legend-arrow" style="font-size:11px;"></span></h4>
+        <div id="map-legend-body">
         <div style="display: flex; align-items: center; margin: 4px 0;">
             <div style="width: 20px; height: 20px; background-color: #969696; border: 1px solid #333; border-radius: 50%; margin-right: 8px;"></div>
             <span><strong>GRAY:</strong> Forecast Unavailable (not valid now)</span>
@@ -134,6 +135,7 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
                 <span>Towering Cumulus (TCU) in TAF</span>
             </div>
         </div>
+        </div>
     </div>
     <script>
     (function() {
@@ -159,6 +161,32 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
             bindCheckbox('chk-best', 'airport-best');
             bindCheckbox('chk-convective', 'airport-convective');
         });
+    })();
+    (function() {
+        var mq = window.matchMedia('(max-width: 600px)');
+        function setup(mobile) {
+            var body  = document.getElementById('map-legend-body');
+            var arrow = document.getElementById('map-legend-arrow');
+            var hdr   = document.getElementById('map-legend-toggle');
+            if (!body || !hdr) return;
+            if (mobile) {
+                body.style.display = 'none';
+                if (arrow) arrow.textContent = ' \u25B6';
+                hdr.style.cursor = 'pointer';
+                hdr.onclick = function() {
+                    var open = body.style.display !== 'none';
+                    body.style.display = open ? 'none' : '';
+                    if (arrow) arrow.textContent = open ? ' \u25B6' : ' \u25BC';
+                };
+            } else {
+                body.style.display = '';
+                if (arrow) arrow.textContent = '';
+                hdr.style.cursor = 'default';
+                hdr.onclick = null;
+            }
+        }
+        mq.addEventListener('change', function(e) { setup(e.matches); });
+        window.addEventListener('load', function() { setup(mq.matches); });
     })();
     </script>
     '''

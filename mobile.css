@@ -40,7 +40,8 @@
 
     #map-legend h4 {
         font-size: 12px !important;
-        margin-bottom: 4px !important;
+        margin-bottom: 0 !important;
+        user-select: none;
     }
 
     /* --- TAF time slider ---
