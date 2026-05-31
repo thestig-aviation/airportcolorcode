@@ -72,7 +72,7 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
         <div id="map-legend-body">
         <div style="display: flex; align-items: center; margin: 4px 0;">
             <div style="width: 20px; height: 20px; background-color: #969696; border: 1px solid #333; border-radius: 50%; margin-right: 8px;"></div>
-            <span><strong>GRAY:</strong> Forecast Unavailable (not valid now)</span>
+            <span><strong>GRAY:</strong> Forecast Unavailable</span>
         </div>
         <div style="display: flex; align-items: center; margin: 4px 0;">
             <div style="width: 20px; height: 20px; background-color: #FF0000; border: 1px solid #333; border-radius: 50%; margin-right: 8px;"></div>
