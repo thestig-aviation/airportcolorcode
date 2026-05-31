@@ -21,6 +21,7 @@ _NO_TAF_CONDITIONS = ParsedConditions(
     has_ts=False, has_cb=False, has_tcu=False,
     has_cavok=False,
     forecast_available_now=False, forecast_unavailable_reason="No current TAF",
+    taf_begin=None, taf_end=None,
 )
 
 _UNAVAILABLE_CONDITIONS = ParsedConditions(
@@ -28,6 +29,7 @@ _UNAVAILABLE_CONDITIONS = ParsedConditions(
     has_ts=False, has_cb=False, has_tcu=False,
     has_cavok=False,
     forecast_available_now=False, forecast_unavailable_reason="TAF data unavailable",
+    taf_begin=None, taf_end=None,
 )
 
 
@@ -53,6 +55,8 @@ def _apply_parsed_properties(properties, conditions):
     properties["parsedHasCavok"] = conditions.has_cavok
     properties["parsedForecastAvailableNow"] = conditions.forecast_available_now
     properties["parsedForecastUnavailableReason"] = conditions.forecast_unavailable_reason
+    properties["parsedTafBegin"] = conditions.taf_begin
+    properties["parsedTafEnd"] = conditions.taf_end
     properties["parsedForecastPeriods"] = [
         {
             "begin": p.begin.isoformat() if p.begin else None,

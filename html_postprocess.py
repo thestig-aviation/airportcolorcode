@@ -48,7 +48,7 @@ def _compute_taf_time_range(features):
     return (earliest, latest) if latest > earliest else (None, None)
 
 
-def _build_time_slider_html(taf_start, taf_end, airport_periods):
+def _build_time_slider_html(taf_start, taf_end, airport_periods, airport_taf_windows):
     """Build the time-slider CSS/HTML/JS block for injection into the output page."""
     taf_base_ms = int(taf_start.timestamp() * 1000)
     total_hours = int((taf_end - taf_start).total_seconds() / 3600)
@@ -57,6 +57,7 @@ def _build_time_slider_html(taf_start, taf_end, airport_periods):
     start_label = taf_start.strftime("%Y-%m-%d %H:%M UTC")
     end_label = taf_end.strftime("%Y-%m-%d %H:%M UTC")
     airport_periods_json = json.dumps(airport_periods)
+    airport_taf_windows_json = json.dumps(airport_taf_windows)
     return f'''
     <style>
         #taf-time-slider {{
@@ -156,6 +157,7 @@ def _build_time_slider_html(taf_start, taf_end, airport_periods):
     </div>
     <script>
     var AIRPORT_PERIODS = {airport_periods_json};
+    var AIRPORT_TAF_WINDOWS = {airport_taf_windows_json};
     (function() {{
         const BASE_MS = {taf_base_ms};
         const TOTAL_HOURS = {total_hours};
@@ -182,6 +184,11 @@ def _build_time_slider_html(taf_start, taf_end, airport_periods):
             for (var icao in lmap) {{
                 var lm = lmap[icao];
                 var periods = (typeof AIRPORT_PERIODS !== 'undefined' && AIRPORT_PERIODS[icao]) || [];
+                // Gray if the slider window extends at all outside this airport's TAF validPeriod
+                var tafWin = (typeof AIRPORT_TAF_WINDOWS !== 'undefined') && AIRPORT_TAF_WINDOWS[icao];
+                var outsideTaf = !tafWin
+                    || winStart < new Date(tafWin.begin).getTime()
+                    || winEnd   > new Date(tafWin.end).getTime();
                 // Periods that overlap [winStart, winEnd)
                 var active = periods.filter(function(p) {{
                     if (!p.begin || !p.end) return false;
@@ -195,7 +202,7 @@ def _build_time_slider_html(taf_start, taf_end, airport_periods):
                 // Worst dot colour
                 if (window[lm.worst]) {{
                     var worstHex;
-                    if (wxActive.length === 0) {{
+                    if (outsideTaf) {{
                         worstHex = window.UNAVAILABLE_HEX;
                     }} else {{
                         var worstP = wxActive.reduce(function(a, b) {{
@@ -204,10 +211,20 @@ def _build_time_slider_html(taf_start, taf_end, airport_periods):
                         worstHex = window.COLOUR_STATE_HEX[worstP.colourState] || window.UNAVAILABLE_HEX;
                     }}
                     window[lm.worst].setStyle({{fillColor: worstHex}});
+                    // Update tooltip to explain the gray state
+                    var wTip = window[lm.worst].getTooltip ? window[lm.worst].getTooltip() : null;
+                    if (wTip) {{
+                        if (!window[lm.worst]._origTooltip) {{
+                            window[lm.worst]._origTooltip = wTip.getContent();
+                        }}
+                        wTip.setContent(outsideTaf
+                            ? 'Selected time period outside of forecast bounds'
+                            : window[lm.worst]._origTooltip);
+                    }}
                 }}
                 // Best ring
                 if (window[lm.best]) {{
-                    if (wxActive.length === 0) {{
+                    if (outsideTaf) {{
                         window[lm.best].setStyle({{opacity: 0}});
                     }} else {{
                         var bestP = wxActive.reduce(function(a, b) {{
@@ -217,10 +234,10 @@ def _build_time_slider_html(taf_start, taf_end, airport_periods):
                         window[lm.best].setStyle({{color: bestHex, opacity: 1}});
                     }}
                 }}
-                // Convective symbols: show at most one (priority TS > CB > TCU)
-                var hasTs  = active.some(function(p) {{ return p.hasTs; }});
-                var hasCb  = active.some(function(p) {{ return p.hasCb; }});
-                var hasTcu = active.some(function(p) {{ return p.hasTcu; }});
+                // Convective symbols: hidden when outside validPeriod, otherwise show at most one (priority TS > CB > TCU)
+                var hasTs  = !outsideTaf && active.some(function(p) {{ return p.hasTs; }});
+                var hasCb  = !outsideTaf && active.some(function(p) {{ return p.hasCb; }});
+                var hasTcu = !outsideTaf && active.some(function(p) {{ return p.hasTcu; }});
                 if (lm.ts  && window[lm.ts])  window[lm.ts].setOpacity(hasTs ? 1 : 0);
                 if (lm.cb  && window[lm.cb])  window[lm.cb].setOpacity(!hasTs && hasCb ? 1 : 0);
                 if (lm.tcu && window[lm.tcu]) window[lm.tcu].setOpacity(!hasTs && !hasCb && hasTcu ? 1 : 0);
@@ -464,6 +481,7 @@ def postprocess_generated_html(output_file, features=None):
 
     # Inject time slider before </body>
     airport_periods = {}
+    airport_taf_windows = {}
     for feature in (features or []):
         props = feature.get("properties", {})
         icao = props.get("ICAO") or props.get("stationIdentification") or props.get("name")
@@ -471,10 +489,14 @@ def postprocess_generated_html(output_file, features=None):
             periods = props.get("parsedForecastPeriods") or []
             if periods:
                 airport_periods[icao] = periods
+            taf_begin = props.get("parsedTafBegin")
+            taf_end = props.get("parsedTafEnd")
+            if taf_begin and taf_end:
+                airport_taf_windows[icao] = {"begin": taf_begin, "end": taf_end}
 
     taf_start, taf_end = _compute_taf_time_range(features)
     if taf_start and taf_end:
-        slider_html = _build_time_slider_html(taf_start, taf_end, airport_periods)
+        slider_html = _build_time_slider_html(taf_start, taf_end, airport_periods, airport_taf_windows)
         if slider_html:
             if "</body>" in html_content:
                 html_content = html_content.replace("</body>", slider_html + "\n</body>", 1)

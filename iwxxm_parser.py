@@ -30,6 +30,8 @@ ParsedConditions = namedtuple("ParsedConditions", [
     "has_cavok",
     "forecast_available_now",
     "forecast_unavailable_reason",
+    "taf_begin",          # ISO 8601 string (UTC) or None
+    "taf_end",            # ISO 8601 string (UTC) or None
 ])
 
 
@@ -308,4 +310,6 @@ def parse_iwxxm_conditions(xml_text):
         has_cavok=has_cavok,
         forecast_available_now=forecast_available_now,
         forecast_unavailable_reason=forecast_unavailable_reason,
+        taf_begin=taf_begin.isoformat() if taf_begin else None,
+        taf_end=taf_end.isoformat() if taf_end else None,
     )
