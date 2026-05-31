@@ -56,7 +56,7 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
 
     # Add legend to the map
     legend_html = '''
-    <div style="position: fixed; 
+    <div id="map-legend" style="position: fixed; 
                 top: 10px; 
                 right: 10px; 
                 width: 280px; 
