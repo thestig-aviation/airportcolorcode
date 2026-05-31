@@ -1,0 +1,43 @@
+/* Mobile responsive overrides.
+   All rules are inside a max-width media query so the desktop layout is
+   completely untouched. */
+
+@media (max-width: 600px) {
+
+    /* --- Status notice (top centre) ---
+       Constrain to viewport width and reduce font so it doesn't overflow. */
+    #status-notice {
+        width: calc(100vw - 30px) !important;
+        font-size: 12px !important;
+        padding: 5px 10px !important;
+        box-sizing: border-box;
+    }
+
+    /* --- Countdown timer ---
+       Lift it above the TAF slider so the two elements don't overlap. */
+    #countdown-timer {
+        bottom: 120px !important;
+        font-size: 11px !important;
+        padding: 5px 8px !important;
+    }
+
+    #countdown-timer .time {
+        font-size: 13px !important;
+    }
+
+    /* --- TAF time slider ---
+       Stretch to fill the viewport instead of the fixed 540 px desktop width. */
+    #taf-time-slider {
+        width: calc(100vw - 30px) !important;
+        padding: 8px 12px 12px !important;
+        box-sizing: border-box;
+    }
+
+    #taf-slider-header {
+        font-size: 12px !important;
+    }
+
+    #taf-slider-labels {
+        font-size: 10px !important;
+    }
+}
