@@ -321,8 +321,9 @@ def postprocess_generated_html(output_file, features=None):
 
     # Centered status notice at the top of the map
     status_notice_html = f'''
-    <div style="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10001;font-family:Arial,sans-serif;font-size:15px;color:#222;background:rgba(255,255,255,0.55);padding:6px 18px 6px 16px;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,0.07);pointer-events:none;text-align:center;">
-        Airport Color Code &mdash; <span style=\"color:#FF0000;font-weight:bold;\">Prototype - not intended for operational use</span><br/>
+    <div id="status-notice" style="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10001;font-family:Arial,sans-serif;font-size:15px;color:#222;background:rgba(255,255,255,0.55);padding:6px 18px 6px 16px;border-radius:7px;box-shadow:0 1px 4px rgba(0,0,0,0.07);pointer-events:none;text-align:center;">
+        Airport Color Code<br/>
+        <span style=\"color:#FF0000;font-weight:bold;\">Prototype - not intended for operational use</span><br/>
         <span style="font-size:13px;color:#444;">Codebase changed: {last_deploy_time or 'unavailable'}</span><br/>
         <span style="font-size:13px;color:#444;">Last Issue Time: {latest_issue_time_display}</span>
     </div>
@@ -455,8 +456,9 @@ def postprocess_generated_html(output_file, features=None):
     </script>
     '''
 
-    # Insert the auto-refresh code in the <head> section
-    html_content = html_content.replace('</head>', auto_refresh_code + '</head>')
+    # Insert the auto-refresh code and mobile stylesheet link in the <head> section
+    mobile_css_link = '    <link rel="stylesheet" href="mobile.css"/>\n'
+    html_content = html_content.replace('</head>', mobile_css_link + auto_refresh_code + '</head>')
 
     # Inject time slider before </body>
     airport_periods = {}
