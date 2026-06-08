@@ -21,10 +21,20 @@ def ensure_local_icon(icon_path, icon_local_name):
     return icon_local_name
 
 
-def render_convective_marker(location, symbol_type, icon_uri, class_name="airport-convective"):
+def render_convective_marker(location, symbol_type, icon_uri=None, class_name="airport-convective"):
     """Render a convective weather marker (TS, CB, or TCU). Initially hidden; JS controls visibility."""
     title = get_convective_symbol_title(symbol_type)
-    alt = symbol_type
+
+    if icon_uri is not None:
+        inner_html = (
+            f'<img src="{icon_uri}" '
+            f'width="23" height="23" alt="{symbol_type}" style="display:block;"/>'
+        )
+    else:
+        inner_html = (
+            f'<span style="font-size:10px;font-weight:bold;color:#111;line-height:1;">'
+            f'{symbol_type}</span>'
+        )
 
     return folium.Marker(
         location=location,
@@ -37,8 +47,7 @@ def render_convective_marker(location, symbol_type, icon_uri, class_name="airpor
                 'width:30px;height:30px;display:flex;align-items:center;justify-content:center;'
                 'background:rgba(255,255,255,0.96);border:2px solid #111;border-radius:50%;'
                 f'box-shadow:0 1px 4px rgba(0,0,0,0.45);" title="{title}">'
-                f'<img src="{icon_uri}" '
-                f'width="23" height="23" alt="{alt}" style="display:block;"/>'
+                + inner_html +
                 '</div>'
             ),
         ),
@@ -46,10 +55,10 @@ def render_convective_marker(location, symbol_type, icon_uri, class_name="airpor
     )
 
 
-def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
+def build_map(features, ts_icon_uri):
     """Build and return a Folium map with colour-coded airport markers and convective overlays.
 
-    Icon URIs reference locally-bundled PNG assets copied alongside the output HTML.
+    CB and TCU convective symbols are rendered as text labels; TS uses a PNG icon asset.
     Priority for convective overlay display: TS > CB > TCU.
     """
     m = folium.Map(location=[65, 15], zoom_start=4)
@@ -125,13 +134,15 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
                 <span>Thunderstorm (TS) in TAF</span>
             </div>
             <div style="display: flex; align-items: center; margin-top: 4px; margin-left: 20px;">
-                <img src="''' + cb_icon_uri + '''"
-                     width="23" height="23" alt="CB" style="margin-right: 6px; border: 2px solid #111; border-radius: 50%; padding: 2px; background: white; box-shadow:0 1px 4px rgba(0,0,0,0.45);"/>
+                <div style="width:23px;height:23px;display:flex;align-items:center;justify-content:center;margin-right:6px;border:2px solid #111;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.45);flex-shrink:0;">
+                    <span style="font-size:9px;font-weight:bold;color:#111;line-height:1;">CB</span>
+                </div>
                 <span>Cumulonimbus (CB) in TAF</span>
             </div>
             <div style="display: flex; align-items: center; margin-top: 4px; margin-left: 20px;">
-                <img src="''' + tcu_icon_uri + '''"
-                     width="23" height="23" alt="TCU" style="margin-right: 6px; border: 2px solid #111; border-radius: 50%; padding: 2px; background: white; box-shadow:0 1px 4px rgba(0,0,0,0.45);"/>
+                <div style="width:23px;height:23px;display:flex;align-items:center;justify-content:center;margin-right:6px;border:2px solid #111;border-radius:50%;background:white;box-shadow:0 1px 4px rgba(0,0,0,0.45);flex-shrink:0;">
+                    <span style="font-size:9px;font-weight:bold;color:#111;line-height:1;">TCU</span>
+                </div>
                 <span>Towering Cumulus (TCU) in TAF</span>
             </div>
         </div>
@@ -287,12 +298,12 @@ def build_map(features, cb_icon_uri, tcu_icon_uri, ts_icon_uri):
                 ts_m.add_to(m)
                 ts_name = ts_m.get_name()
                 cb_m = render_convective_marker(
-                    [lat, lon], "CB", cb_icon_uri, "airport-convective airport-convective-cb"
+                    [lat, lon], "CB", class_name="airport-convective airport-convective-cb"
                 )
                 cb_m.add_to(m)
                 cb_name = cb_m.get_name()
                 tcu_m = render_convective_marker(
-                    [lat, lon], "TCU", tcu_icon_uri, "airport-convective airport-convective-tcu"
+                    [lat, lon], "TCU", class_name="airport-convective airport-convective-tcu"
                 )
                 tcu_m.add_to(m)
                 tcu_name = tcu_m.get_name()
