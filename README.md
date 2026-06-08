@@ -91,6 +91,7 @@ Calculates UK/European colour state from a **table-driven** threshold lookup (`_
 - `airport_color_codes.html`: Generated map output.
 - `mobile.css`: Responsive stylesheet; uses `@media (max-width: 600px)` rules to adapt the status notice, legend, countdown timer, and TAF slider for small screens. Desktop layout is unchanged.
 - `ts_symbol.png`: Local icon asset.
+- `snapshot.py`: Headless-browser PNG export utility. See [Snapshot Export](#snapshot-export) below.
 - `.github/workflows/publish-map.yml`: GitHub Actions workflow (pip dependency caching enabled).
 
 ## Quick Start
@@ -138,6 +139,70 @@ Enable Pages:
 1. Push repository to GitHub.
 2. Open **Settings → Pages**.
 3. Under **Build and deployment**, select **Source: GitHub Actions**.
+
+## Snapshot Export
+
+`snapshot.py` renders a PNG of the live published map by driving a headless Chromium browser via [Playwright](https://playwright.dev/python/).
+
+### Additional setup
+
+```bash
+pip install playwright flask   # flask only needed for server mode
+playwright install chromium
+```
+
+### One-shot CLI
+
+```bash
+python snapshot.py \
+  --bbox "min_lon,min_lat,max_lon,max_lat" \
+  --buffer 0.5 \
+  --start "2026-06-08T12:00Z" \
+  --end   "2026-06-08T18:00Z" \
+  --output snapshot.png \
+  --width 1280 --height 900
+```
+
+| Argument | Required | Default | Description |
+|---|---|---|---|
+| `--bbox` | yes | — | Bounding box as `min_lon,min_lat,max_lon,max_lat` (WGS-84 decimal degrees) |
+| `--buffer` | no | `0.5` | Extra padding on every side of the bbox, in degrees |
+| `--start` | no | — | UTC ISO-8601 datetime for the time-slider start handle |
+| `--end` | no | — | UTC ISO-8601 datetime for the time-slider end handle |
+| `--output` | no | `snapshot.png` | Output file path |
+| `--width` | no | `1280` | Viewport width in pixels |
+| `--height` | no | `900` | Viewport height in pixels |
+
+Omitting `--start` / `--end` leaves the slider at the page's default position.
+
+### HTTP server mode
+
+```bash
+python snapshot.py --serve                          # 127.0.0.1:8000
+python snapshot.py --serve --host 0.0.0.0 --port 5000
+```
+
+Then call the endpoint from any HTTP client:
+
+```
+GET http://localhost:8000/snapshot?bbox=4.0,55.0,32.0,72.0&buffer=0.5&start=2026-06-08T12:00Z&end=2026-06-08T18:00Z
+```
+
+The response is a raw PNG (`Content-Type: image/png`). All query parameters match the CLI arguments above; only `bbox` is required.
+
+### Python API
+
+```python
+from snapshot import take_snapshot
+
+take_snapshot(
+    bbox=(4.0, 55.0, 32.0, 72.0),
+    buffer_deg=0.5,
+    slider_start="2026-06-08T12:00Z",
+    slider_end="2026-06-08T18:00Z",
+    output="norway_area.png",
+)
+```
 
 ## Operational Notes
 
