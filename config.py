@@ -4,13 +4,9 @@ from pathlib import Path
 TAF_API_URL = "https://aviation.met.no/collections/taf/locations"
 REQUEST_TIMEOUT_SECONDS = 20
 
-CB_ICON_LOCAL_NAME = "cb_symbol.png"
-TCU_ICON_LOCAL_NAME = "tcu_symbol.png"
 TS_ICON_LOCAL_NAME = "ts_symbol.png"
 
 BASE_DIR = Path(__file__).resolve().parent
-CB_ICON_PATH = BASE_DIR / CB_ICON_LOCAL_NAME
-TCU_ICON_PATH = BASE_DIR / TCU_ICON_LOCAL_NAME
 TS_ICON_PATH = BASE_DIR / TS_ICON_LOCAL_NAME
 DEFAULT_OUTPUT_FILE = BASE_DIR / "airport_color_codes.html"
 

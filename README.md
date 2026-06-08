@@ -90,7 +90,7 @@ Calculates UK/European colour state from a **table-driven** threshold lookup (`_
   - Time slider HTML/CSS/JS block; embeds `AIRPORT_PERIODS` and `AIRPORT_TAF_WINDOWS` JSON. The `updateMapForWindow()` function uses the TAF `validPeriod` bounds per airport to decide whether to show colours or gray.
 - `airport_color_codes.html`: Generated map output.
 - `mobile.css`: Responsive stylesheet; uses `@media (max-width: 600px)` rules to adapt the status notice, legend, countdown timer, and TAF slider for small screens. Desktop layout is unchanged.
-- `cb_symbol.png`, `tcu_symbol.png`, `ts_symbol.png`: Local icon assets.
+- `ts_symbol.png`: Local icon asset.
 - `.github/workflows/publish-map.yml`: GitHub Actions workflow (pip dependency caching enabled).
 
 ## Quick Start
