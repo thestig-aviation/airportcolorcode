@@ -85,7 +85,6 @@ def _fetch_single_airport(session, feature):
     try:
         response = session.get(
             f"{TAF_API_URL}/{icao}",
-            params={"f": "json"},
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
         if response.status_code == 204:
