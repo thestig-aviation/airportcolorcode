@@ -61,7 +61,15 @@ def build_map(features, ts_icon_uri):
     CB and TCU convective symbols are rendered as text labels; TS uses a PNG icon asset.
     Priority for convective overlay display: TS > CB > TCU.
     """
-    m = folium.Map(location=[65, 15], zoom_start=4)
+    # Use Esri's World Gray Canvas tiles instead of the default OpenStreetMap tile layer.
+    # OSM's tile servers are volunteer-run and enforce a strict usage policy
+    # (https://operations.osmfoundation.org/policies/tiles/); a publicly
+    # published, auto-refreshing map like this one gets IP/referrer-blocked
+    # ("osm.wiki/Blocked") under that policy. CartoDB's raster basemaps now
+    # require a paid API key (anonymous requests are served with an "API key
+    # required" watermark), so Esri's free, no-key ArcGIS Online basemap is
+    # used here instead; it has a similar light, low-contrast look.
+    m = folium.Map(location=[65, 15], zoom_start=4, tiles="Esri WorldGrayCanvas")
 
     # Add legend to the map
     legend_html = '''
